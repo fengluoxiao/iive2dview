@@ -100,7 +100,14 @@ jobs:
           set -euo pipefail
           project="$(find platforms/ios -name '*.xcodeproj' -type d -print -quit)"
           test -n "$project"
-          xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
+          if ! xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log; then
+            if ! grep -iE 'error:|fatal error|undefined symbol|ld:' xcodebuild.log | tail -n 25 > xcodebuild-errors.log; then
+              tail -n 25 xcodebuild.log > xcodebuild-errors.log
+            fi
+            summary="$(tr '\n' ' ' < xcodebuild-errors.log)"
+            printf '::error title=Unsigned iPhone build::%s\n' "$summary"
+            exit 1
+          fi
           app="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Build/Products/Release-iphoneos/*.app' -type d -print -quit)"
           test -n "$app"
           mkdir -p artifacts/Payload
