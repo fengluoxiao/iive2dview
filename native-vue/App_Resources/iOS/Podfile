@@ -1,0 +1,3 @@
+platform :ios, '16.0'
+
+pod 'Live2DNativeMetal', :path => '../../packages/live2d-native-metal'

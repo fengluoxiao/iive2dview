@@ -1,0 +1,23 @@
+{
+  "name": "native-vue",
+  "main": "app/app.ts",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@nativescript/core": "~9.1.0",
+    "live2d-native-metal": "file:packages/live2d-native-metal",
+    "nativescript-vue": "^3.1.2"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "ios:prepare": "ns prepare ios"
+  },
+  "devDependencies": {
+    "@nativescript/tailwind": "^4.0.0",
+    "@nativescript/types": "~9.0.0",
+    "@nativescript/webpack": "~5.0.31",
+    "@types/node": "^20.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~6.0.0"
+  }
+}

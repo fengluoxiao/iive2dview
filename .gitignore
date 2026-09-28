@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+/*
+!/.github/
+!/.gitignore
+!/native-vue/
+!/native-vue/**
+native-host/.tools/
+native-host/*.log
+native-host/*.h264
+native-host/target/
+native-host/hls/
+native-vue/vendor/*.zip
+# Keep the downloaded SDK local. The commit explicitly adds only the iOS Metal
+# runtime sources and the redistributable iPhone Core archive needed by CI.
+native-vue/vendor/CubismSdkForNative-5-r.5/
+_local-model-backup/
+vite*.log

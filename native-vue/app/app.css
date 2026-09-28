@@ -1,0 +1,9 @@
+Page { background-color: #111318; }
+.stage { background-color: #0a0c10; }
+.controls { background-color: #1a1e25; padding: 14; }
+.title { color: #f5f7fa; font-size: 19; font-weight: 700; }
+.subtitle { color: #aab3c0; font-size: 12; margin-top: 3; }
+.row-label { color: #e4e9f0; font-size: 14; }
+.row-value { color: #8dd2ff; font-size: 13; text-align: right; }
+.control-row { margin-top: 12; }
+.reset { background-color: #2f80c7; color: white; border-radius: 6; margin-top: 14; }
