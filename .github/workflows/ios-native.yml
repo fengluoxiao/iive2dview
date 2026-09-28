@@ -112,7 +112,7 @@ jobs:
           # NativeScript's product name is not guaranteed to match its generated
           # xcodeproj name. Query the workspace instead of deriving a scheme path.
           xcodebuild -list -workspace "$workspace" | tee xcodebuild-schemes.log
-          scheme="$(sed -n '/Schemes:/,$p' xcodebuild-schemes.log | sed -n 's/^[[:space:]]*//p' | grep -vE '^(Pods-|$)' | head -n 1)"
+          scheme="$(sed -n '/Schemes:/,$p' xcodebuild-schemes.log | sed -n 's/^[[:space:]]*//p' | grep -vE '^(Pods-|Schemes:|$)' | head -n 1)"
           if [ -z "$scheme" ]; then
             echo '::error title=Unsigned iPhone build::No application scheme was found in the generated iOS workspace.'
             exit 1
