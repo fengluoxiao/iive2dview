@@ -7,8 +7,8 @@
 
 #import "LAppSprite.h"
 #import <Foundation/Foundation.h>
-#import "AppDelegate.h"
-#import "SceneDelegate.h"
+#import "ViewController.h"
+#import "Live2DMetalContext.h"
 #import "LAppDefine.h"
 #import "LAppPal.h"
 #import <CubismFramework.hpp>
@@ -53,9 +53,7 @@ typedef struct
         _vertexBuffer = nil;
         _fragmentBuffer = nil;
 
-        AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-        SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-        ViewController* viewController = [sceneDelegate viewController];
+        ViewController* viewController = Live2DMetalHostViewController();
         id <MTLDevice> device = [viewController getDevice];
 
         [self SetMTLBuffer:device MaxWidth:maxWidth MaxHeight:maxHeight];
@@ -91,11 +89,6 @@ typedef struct
 
 - (void)renderImmidiate:(id<MTLRenderCommandEncoder>)renderEncoder
 {
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* viewController = [sceneDelegate viewController];
-    id <MTLDevice> device = [viewController getDevice];
-
     float width = _rect.right - _rect.left;
     float height = _rect.up - _rect.down;
 
@@ -127,9 +120,7 @@ typedef struct
     _rect.up = (y + height * 0.5f);
     _rect.down = (y - height * 0.5f);
 
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* viewController = [sceneDelegate viewController];
+    ViewController* viewController = Live2DMetalHostViewController();
     id <MTLDevice> device = [viewController getDevice];
     [self SetMTLBuffer:device MaxWidth:maxWidth MaxHeight:maxHeight];
 

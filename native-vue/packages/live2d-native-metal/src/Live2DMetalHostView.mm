@@ -6,6 +6,7 @@
 #import "LAppDefine.h"
 #import "LAppPal.h"
 #import "LAppTextureManager.h"
+#import "Live2DMetalContext.h"
 #import <SSZipArchive/SSZipArchive.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CubismFramework.hpp>
@@ -52,6 +53,7 @@ void InitializeCubismOnce()
         _renderer = [[ViewController alloc] init];
         _textureManager = [[LAppTextureManager alloc] init];
         _renderer.textureManager = _textureManager;
+        Live2DMetalSetHost(_renderer, _textureManager);
         _metalView = _renderer.view;
         _metalView.frame = self.bounds;
         _metalView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -155,6 +157,7 @@ void InitializeCubismOnce()
 
 - (void)dealloc
 {
+    Live2DMetalClearHost(_renderer);
     [_metalView removeFromSuperview];
     [_importDirectory release];
     [_textureManager release];

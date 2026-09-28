@@ -18,10 +18,9 @@
 #import "stb_image.h"
 #pragma clang diagnostic pop
 #import "LAppPal.h"
-#import "AppDelegate.h"
-#import "SceneDelegate.h"
 #import "ViewController.h"
 #import "MetalUIView.h"
+#import "Live2DMetalContext.h"
 
 @interface LAppTextureManager()
 
@@ -45,9 +44,11 @@
 
 - (TextureInfo*) createTextureFromPngFile:(std::string)fileName
 {
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* viewController = [sceneDelegate viewController];
+    ViewController* viewController = Live2DMetalHostViewController();
+    if (viewController == nil)
+    {
+        return NULL;
+    }
 
     //search loaded texture already.
     for (Csm::csmUint32 i = 0; i < _textures.GetSize(); i++)

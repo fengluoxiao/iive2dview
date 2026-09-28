@@ -12,9 +12,8 @@
 #import "LAppDefine.h"
 #import "LAppPal.h"
 #import "LAppTextureManager.h"
-#import "AppDelegate.h"
-#import "SceneDelegate.h"
 #import "ViewController.h"
+#import "Live2DMetalContext.h"
 #import <CubismDefaultParameterId.hpp>
 #import <CubismModelSettingJson.hpp>
 #import <Id/CubismIdManager.hpp>
@@ -91,9 +90,7 @@ LAppModel::~LAppModel()
         ReleaseMotionGroup(group);
     }
 
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    LAppTextureManager *textureManager = [sceneDelegate getTextureManager];
+    LAppTextureManager *textureManager = Live2DMetalHostTextureManager();
 
     for (csmInt32 modelTextureNumber = 0; modelTextureNumber < _modelSetting->GetTextureCount(); modelTextureNumber++)
     {
@@ -106,7 +103,10 @@ LAppModel::~LAppModel()
         //テクスチャ管理クラスからモデルテクスチャを削除する
         csmString texturePath = _modelSetting->GetTextureFileName(modelTextureNumber);
         texturePath = _modelHomeDir + texturePath;
-        [textureManager releaseTextureByName:texturePath.GetRawString()];
+        if (textureManager != nil)
+        {
+            [textureManager releaseTextureByName:texturePath.GetRawString()];
+        }
     }
 
     delete _modelSetting;
@@ -136,9 +136,11 @@ void LAppModel::LoadAssets(const csmChar* dir, const csmChar* fileName)
         return;
     }
 
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* view = [sceneDelegate viewController];
+    ViewController* view = Live2DMetalHostViewController();
+    if (view == nil)
+    {
+        return;
+    }
 
     const CGFloat retinaScale = [[UIScreen mainScreen] scale];
     // Retinaディスプレイサイズにするため倍率をかける
@@ -610,9 +612,11 @@ void LAppModel::ReloadRenderer()
 {
     DeleteRenderer();
 
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* view = [sceneDelegate viewController];
+    ViewController* view = Live2DMetalHostViewController();
+    if (view == nil)
+    {
+        return;
+    }
 
     const CGFloat retinaScale = [[UIScreen mainScreen] scale];
     // Retinaディスプレイサイズにするため倍率をかける
@@ -637,9 +641,16 @@ void LAppModel::SetupTextures()
         csmString texturePath = _modelSetting->GetTextureFileName(modelTextureNumber);
         texturePath = _modelHomeDir + texturePath;
 
-        AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-        SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-        TextureInfo* texture = [[sceneDelegate getTextureManager] createTextureFromPngFile:texturePath.GetRawString()];
+        LAppTextureManager* textureManager = Live2DMetalHostTextureManager();
+        if (textureManager == nil)
+        {
+            continue;
+        }
+        TextureInfo* texture = [textureManager createTextureFromPngFile:texturePath.GetRawString()];
+        if (texture == NULL)
+        {
+            continue;
+        }
         id <MTLTexture> mtlTextueNumber = texture->id;
 
         //Metal

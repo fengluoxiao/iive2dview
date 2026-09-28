@@ -9,9 +9,8 @@
 #import <string.h>
 #import <stdlib.h>
 #import <Foundation/Foundation.h>
-#import "AppDelegate.h"
-#import "SceneDelegate.h"
 #import "ViewController.h"
+#import "Live2DMetalContext.h"
 #import "LAppModel.h"
 #import "LAppDefine.h"
 #import "LAppPal.h"
@@ -205,9 +204,11 @@ Csm::csmString GetPath(CFURLRef url)
 
 - (void)onTap:(Csm::csmFloat32)x floatY:(Csm::csmFloat32)y;
 {
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* view = [sceneDelegate viewController];
+    ViewController* view = Live2DMetalHostViewController();
+    if (view == nil)
+    {
+        return;
+    }
     int width = [view getWindowWidth];
     int height = [view getWindowHeight];
     float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
@@ -253,9 +254,11 @@ Csm::csmString GetPath(CFURLRef url)
 
 - (void)onUpdate:(id <MTLCommandBuffer>)commandBuffer currentDrawable:(id<CAMetalDrawable>)drawable depthTexture:(id<MTLTexture>)depthTarget;
 {
-    AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-    SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-    ViewController* view = [sceneDelegate viewController];
+    ViewController* view = Live2DMetalHostViewController();
+    if (view == nil)
+    {
+        return;
+    }
 
     int width = [view getWindowWidth];
     int height = [view getWindowHeight];
@@ -508,10 +511,6 @@ Csm::csmString GetPath(CFURLRef url)
         float clearColorR = 0.0f;
         float clearColorG = 0.0f;
         float clearColorB = 0.0f;
-
-        AppDelegate *appDelegate = (AppDelegate *) [[UIApplication sharedApplication] delegate];
-        SceneDelegate* sceneDelegate = [appDelegate getActiveSceneDelegate];
-        ViewController* view = [sceneDelegate viewController];
 
         [self SwitchRenderingTarget:useRenderTarget];
         [self SetRenderTargetClearColor:clearColorR g:clearColorG b:clearColorB];
