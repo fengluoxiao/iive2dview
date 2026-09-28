@@ -124,7 +124,7 @@ typedef struct
     id <MTLDevice> device = [viewController getDevice];
     [self SetMTLBuffer:device MaxWidth:maxWidth MaxHeight:maxHeight];
 
-    return self;
+    return;
 }
 
 - (bool)isHit:(float)pointX PointY:(float)pointY
@@ -206,7 +206,7 @@ typedef struct
     if (!vertexProgram)
     {
         NSLog(@">> ERROR: Couldn't load vertex function from default library");
-        return nil;
+        return;
     }
 
     //フラグメントシェーダの取得
@@ -214,7 +214,7 @@ typedef struct
     if (!fragmentProgram)
     {
         NSLog(@" ERROR: Couldn't load fragment function from default library");
-        return nil;
+        return;
     }
 
     [self SetMTLRenderPipelineDescriptor:device vertexProgram:vertexProgram fragmentProgram:fragmentProgram];
@@ -260,7 +260,7 @@ typedef struct
     if (!_pipelineState)
     {
         NSLog(@"ERROR: Failed aquiring pipeline state: %@", error);
-        return nil;
+        return;
     }
 }
 @end
