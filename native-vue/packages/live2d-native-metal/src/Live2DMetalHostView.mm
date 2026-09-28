@@ -9,6 +9,7 @@
 #import <SSZipArchive/SSZipArchive.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CubismFramework.hpp>
+#import <Id/CubismIdManager.hpp>
 
 using namespace Csm;
 
