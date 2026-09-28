@@ -104,18 +104,17 @@ jobs:
           set -euo pipefail
           project="$(find platforms/ios -path '*/Pods/*' -prune -o -name '*.xcodeproj' -type d -print -quit)"
           test -n "$project"
-          mkdir -p artifacts/build
-          if ! xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR="$PWD/artifacts/build" build 2>&1 | tee xcodebuild.log; then
+          if ! xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log; then
             grep -iE 'error:|fatal error|undefined symbol|ld:|BUILD FAILED' xcodebuild.log | tail -n 40 > xcodebuild-errors.log || true
             tail -n 80 xcodebuild.log >> xcodebuild-errors.log
             summary="$(tr '\n' ' ' < xcodebuild-errors.log)"
             printf '::error title=Unsigned iPhone build::%s\n' "$summary"
             exit 1
           fi
-          app="$(find artifacts/build -name '*.app' -type d -print -quit)"
+          app="$(find platforms/ios/build -name '*.app' -type d -print -quit)"
           if [ -z "$app" ]; then
-            find artifacts -maxdepth 4 -print | sort
-            printf '::error title=Unsigned iPhone build::xcodebuild completed but no .app exists in artifacts/build\n'
+            find platforms/ios/build -maxdepth 4 -print | sort
+            printf '::error title=Unsigned iPhone build::xcodebuild completed but no .app exists in platforms/ios/build\n'
             exit 1
           fi
           mkdir -p artifacts/Payload
