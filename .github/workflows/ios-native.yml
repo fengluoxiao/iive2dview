@@ -134,11 +134,11 @@ jobs:
           fi
           # A workspace reports settings for the app plus every Pod target.
           # Keep TARGET_BUILD_DIR and WRAPPER_NAME from the same target block,
-          # and accept only the block which produces an application bundle.
+          # and accept only the block whose bundle name ends in .app.
           settings="$(xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO -showBuildSettings)"
           app="$(printf '%s\n' "$settings" | awk '
             function emit_app() {
-              if (wrapper_extension == "app" && target_build_dir != "" && wrapper_name != "") {
+              if (wrapper_name ~ /\.app$/ && target_build_dir != "") {
                 print target_build_dir "/" wrapper_name
                 found = 1
                 exit
@@ -148,7 +148,6 @@ jobs:
               emit_app()
               target_build_dir = ""
               wrapper_name = ""
-              wrapper_extension = ""
               next
             }
             /^[[:space:]]*TARGET_BUILD_DIR = / {
@@ -159,11 +158,6 @@ jobs:
             /^[[:space:]]*WRAPPER_NAME = / {
               sub(/^[[:space:]]*WRAPPER_NAME = /, "")
               wrapper_name = $0
-              next
-            }
-            /^[[:space:]]*WRAPPER_EXTENSION = / {
-              sub(/^[[:space:]]*WRAPPER_EXTENSION = /, "")
-              wrapper_extension = $0
               next
             }
             END { if (!found) emit_app() }
