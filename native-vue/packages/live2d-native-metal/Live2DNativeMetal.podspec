@@ -41,5 +41,5 @@ Pod::Spec.new do |spec|
     'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/vendor/Cubism/Core/include ${PODS_TARGET_SRCROOT}/vendor/Cubism/Framework/src ${PODS_TARGET_SRCROOT}/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src ${PODS_TARGET_SRCROOT}/vendor/Cubism/Samples/Metal/thirdParty/stb',
     'OTHER_LDFLAGS' => '$(inherited) -lc++',
   }
-  spec.frameworks = 'CoreGraphics', 'Foundation', 'Metal', 'MetalKit', 'QuartzCore', 'UIKit'
+  spec.frameworks = 'CoreGraphics', 'Foundation', 'Metal', 'MetalKit', 'QuartzCore', 'UIKit', 'UniformTypeIdentifiers'
 end
