@@ -132,40 +132,18 @@ jobs:
             printf '::error title=Unsigned iPhone build::xcodebuild failed; see the relevant Xcode diagnostics emitted above and the diagnostics artifact.\n'
             exit "$build_status"
           fi
-          # A workspace reports settings for the app plus every Pod target.
-          # Keep TARGET_BUILD_DIR and WRAPPER_NAME from the same target block,
-          # and accept only the block whose bundle name ends in .app.
-          settings="$(xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO -showBuildSettings)"
-          app="$(printf '%s\n' "$settings" | awk '
-            function emit_app() {
-              if (wrapper_name ~ /\.app$/ && target_build_dir != "") {
-                print target_build_dir "/" wrapper_name
-                found = 1
-                exit
-              }
-            }
-            /^Build settings for action .* target / {
-              emit_app()
-              target_build_dir = ""
-              wrapper_name = ""
-              next
-            }
-            /^[[:space:]]*TARGET_BUILD_DIR = / {
-              sub(/^[[:space:]]*TARGET_BUILD_DIR = /, "")
-              target_build_dir = $0
-              next
-            }
-            /^[[:space:]]*WRAPPER_NAME = / {
-              sub(/^[[:space:]]*WRAPPER_NAME = /, "")
-              wrapper_name = $0
-              next
-            }
-            END { if (!found) emit_app() }
-          ')"
-          if [ -z "$app" ]; then
-            printf '::error title=Unsigned iPhone build::Xcode did not report a target app output path\n'
+          # Workspace build settings are incomplete for NativeScript's primary
+          # target. The runner is clean, so the actual device application is
+          # unambiguously the sole Release-iphoneos *.app with an Info.plist.
+          mapfile -t app_info_plists < <(find "$HOME/Library/Developer/Xcode/DerivedData" -type f -path '*/Build/Products/Release-iphoneos/*.app/Info.plist' -print)
+          if [ "${#app_info_plists[@]}" -ne 1 ]; then
+            printf 'Found iPhone app candidates:\n'
+            printf '%s\n' "${app_info_plists[@]}"
+            printf '::error title=Unsigned iPhone build::Expected exactly one device app in Xcode DerivedData\n'
             exit 1
           fi
+          app="$(dirname "${app_info_plists[0]}")"
+          printf 'Packaging app bundle: %s\n' "$app"
           if [ ! -d "$app" ] || [ ! -f "$app/Info.plist" ]; then
             printf 'Xcode reported app path: %s\n' "$app"
             printf '::error title=Unsigned iPhone build::xcodebuild completed but its reported app bundle is invalid\n'
