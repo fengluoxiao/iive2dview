@@ -9,7 +9,7 @@ Pod::Spec.new do |spec|
   spec.source = { :path => '.' }
   spec.requires_arc = false
 
-  sdk = File.expand_path('../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5', __dir__)
+  sdk = 'vendor/Cubism'
   sample = "#{sdk}/Samples/Metal/Demo/proj.ios.cmake/src"
 
   spec.source_files = [
@@ -36,7 +36,7 @@ Pod::Spec.new do |spec|
   spec.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++14',
     'CLANG_ENABLE_OBJC_ARC' => 'NO',
-    'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Core/include ${PODS_TARGET_SRCROOT}/../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Framework/src ${PODS_TARGET_SRCROOT}/../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Samples/Common ${PODS_TARGET_SRCROOT}/../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Samples/Metal/Demo/proj.ios.cmake/src ${PODS_TARGET_SRCROOT}/../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Samples/Metal/thirdParty/stb',
+    'HEADER_SEARCH_PATHS' => '$(inherited) ${PODS_TARGET_SRCROOT}/vendor/Cubism/Core/include ${PODS_TARGET_SRCROOT}/vendor/Cubism/Framework/src ${PODS_TARGET_SRCROOT}/vendor/Cubism/Samples/Common ${PODS_TARGET_SRCROOT}/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src ${PODS_TARGET_SRCROOT}/vendor/Cubism/Samples/Metal/thirdParty/stb',
     'OTHER_LDFLAGS' => '$(inherited) -lc++',
   }
   spec.frameworks = 'CoreGraphics', 'Foundation', 'Metal', 'MetalKit', 'QuartzCore', 'UIKit'
