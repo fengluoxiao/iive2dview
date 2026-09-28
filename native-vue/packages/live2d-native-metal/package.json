@@ -1,0 +1,6 @@
+{
+  "name": "live2d-native-metal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local CocoaPods bridge for Cubism Native Metal."
+}
