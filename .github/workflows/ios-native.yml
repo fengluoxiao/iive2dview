@@ -35,6 +35,8 @@ jobs:
           fi
           pod --version
       - run: npm ci
+      - name: Add NativeScript iOS runtime
+        run: npx --yes --package=nativescript@9.1.1 ns platform add ios
       - name: Prepare NativeScript iOS project
         run: npx --yes --package=nativescript@9.1.1 ns prepare ios
       - name: Verify the Cubism Native dependency
@@ -90,13 +92,18 @@ jobs:
           project="$(find platforms/ios -name '*.xcodeproj' -type d -print -quit)"
           test -n "$project"
           xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build
+          app="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Build/Products/Release-iphoneos/*.app' -type d -print -quit)"
+          test -n "$app"
+          mkdir -p artifacts/Payload
+          cp -R "$app" artifacts/Payload/
+          (cd artifacts && zip -qry live2d-native-unsigned.ipa Payload)
       - name: Build enterprise-signed IPA
         if: ${{ inputs.sign == true }}
         run: npx --yes --package=nativescript@9.1.1 ns build ios --for-device --release --env.uglify
       - name: Upload IPA
-        if: ${{ inputs.sign == true }}
+        if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: live2d-native-ipa
-          path: native-vue/platforms/ios/**/*.ipa
+          name: ${{ inputs.sign == true && 'live2d-native-signed-ipa' || 'live2d-native-unsigned-ipa' }}
+          path: ${{ inputs.sign == true && 'native-vue/platforms/ios/**/*.ipa' || 'native-vue/artifacts/live2d-native-unsigned.ipa' }}
           if-no-files-found: error
