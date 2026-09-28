@@ -119,8 +119,11 @@ jobs:
           fi
           echo "Building workspace=$workspace scheme=$scheme"
 
+          # Keep Xcode's build products in the checkout. This preserves the
+          # CocoaPods-derived framework paths and gives packaging a stable app path.
+          derived_data="$PWD/build/DerivedData"
           set -o pipefail
-          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
           build_status="${PIPESTATUS[0]}"
           if [ "$build_status" -ne 0 ]; then
             {
@@ -132,10 +135,10 @@ jobs:
             printf '::error title=Unsigned iPhone build::xcodebuild failed; see the relevant Xcode diagnostics emitted above and the diagnostics artifact.\n'
             exit "$build_status"
           fi
-          app="$(find platforms/ios/build -name '*.app' -type d -print -quit)"
+          app="$(find "$derived_data/Build/Products/Release-iphoneos" -name '*.app' -type d -print -quit)"
           if [ -z "$app" ]; then
-            find platforms/ios/build -maxdepth 4 -print | sort
-            printf '::error title=Unsigned iPhone build::xcodebuild completed but no .app exists in platforms/ios/build\n'
+            find "$derived_data/Build/Products" -maxdepth 4 -print | sort || true
+            printf '::error title=Unsigned iPhone build::xcodebuild completed but no iPhone .app exists in DerivedData\n'
             exit 1
           fi
           mkdir -p artifacts/Payload
