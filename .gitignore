@@ -16,5 +16,19 @@ native-vue/vendor/*.zip
 # Keep the downloaded SDK local. The commit explicitly adds only the iOS Metal
 # runtime sources and the redistributable iPhone Core archive needed by CI.
 native-vue/vendor/CubismSdkForNative-5-r.5/
+# The local pod uses the Metal implementation only. Keep the full SDK download
+# available locally without staging renderers and sample app entry points that
+# are neither compiled nor packaged.
+native-vue/packages/live2d-native-metal/vendor/Cubism/Framework/src/Rendering/D3D9/
+native-vue/packages/live2d-native-metal/vendor/Cubism/Framework/src/Rendering/D3D11/
+native-vue/packages/live2d-native-metal/vendor/Cubism/Framework/src/Rendering/OpenGL/
+native-vue/packages/live2d-native-metal/vendor/Cubism/Framework/src/Rendering/Vulkan/
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/AppDelegate.h
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/AppDelegate.mm
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/CMakeLists.txt
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/Info.plist
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/SceneDelegate.h
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/SceneDelegate.mm
+native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/main.m
 _local-model-backup/
 vite*.log

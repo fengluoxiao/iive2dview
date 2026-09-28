@@ -50,7 +50,9 @@ jobs:
           fi
       - name: Verify the Cubism Native dependency
         run: |
-          test -f vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Core/lib/ios/Release-iphoneos/libLive2DCubismCore.a
+          test -f packages/live2d-native-metal/vendor/Cubism/Core/lib/ios/Release-iphoneos/libLive2DCubismCore.a
+          test -f packages/live2d-native-metal/vendor/Cubism/Core/LICENSE.md
+          test -f packages/live2d-native-metal/vendor/Cubism/Core/RedistributableFiles.txt
           test -f App_Resources/iOS/Res/Resources/back_class_normal.png
       - name: Install enterprise signing material
         if: ${{ inputs.sign == true }}
