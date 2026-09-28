@@ -104,7 +104,10 @@ jobs:
           set -euo pipefail
           project="$(find platforms/ios -path '*/Pods/*' -prune -o -name '*.xcodeproj' -type d -print -quit)"
           test -n "$project"
-          if ! xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log; then
+          workspace="$(find platforms/ios -maxdepth 1 -name '*.xcworkspace' -type d -print -quit)"
+          test -n "$workspace"
+          scheme="$(basename "$project" .xcodeproj)"
+          if ! xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log; then
             grep -iE 'error:|fatal error|undefined symbol|ld:|BUILD FAILED' xcodebuild.log | tail -n 40 > xcodebuild-errors.log || true
             tail -n 80 xcodebuild.log >> xcodebuild-errors.log
             summary="$(tr '\n' ' ' < xcodebuild-errors.log)"
