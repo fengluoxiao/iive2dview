@@ -114,7 +114,10 @@ jobs:
             printf '::error title=Unsigned iPhone build::%s\n' "$summary"
             exit 1
           fi
-          app="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Build/Products/Release-iphoneos/*.app' -type d -print -quit)"
+          app="$(find platforms/ios/build -path '*Release-iphoneos/*.app' -type d -print -quit)"
+          if [ -z "$app" ]; then
+            app="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Build/Products/Release-iphoneos/*.app' -type d -print -quit)"
+          fi
           test -n "$app"
           mkdir -p artifacts/Payload
           cp -R "$app" artifacts/Payload/
