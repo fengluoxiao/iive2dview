@@ -112,7 +112,7 @@ jobs:
             printf '::error title=Unsigned iPhone build::%s\n' "$summary"
             exit 1
           fi
-          app="$(find artifacts/build -maxdepth 1 -name '*.app' -type d -print -quit)"
+          app="$(find artifacts/build -name '*.app' -type d -print -quit)"
           if [ -z "$app" ]; then
             find artifacts -maxdepth 4 -print | sort
             printf '::error title=Unsigned iPhone build::xcodebuild completed but no .app exists in artifacts/build\n'
