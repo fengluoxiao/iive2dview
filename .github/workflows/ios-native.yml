@@ -38,7 +38,14 @@ jobs:
       - name: Add NativeScript iOS runtime
         run: npx --yes --package=nativescript@9.1.1 ns platform add ios
       - name: Prepare NativeScript iOS project
-        run: npx --yes --package=nativescript@9.1.1 ns prepare ios
+        run: |
+          set -o pipefail
+          if ! npx --yes --package=nativescript@9.1.1 ns prepare ios 2>&1 | tee nativescript-prepare.log; then
+            while IFS= read -r line; do
+              printf '::error title=NativeScript iOS prepare::%s\n' "$line"
+            done < <(tail -n 50 nativescript-prepare.log)
+            exit 1
+          fi
       - name: Verify the Cubism Native dependency
         run: |
           test -f vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5/Core/lib/ios/Release-iphoneos/libLive2DCubismCore.a
