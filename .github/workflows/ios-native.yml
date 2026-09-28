@@ -28,6 +28,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: native-vue/package-lock.json
+      - name: Ensure CocoaPods is available
+        run: |
+          if ! command -v pod >/dev/null 2>&1; then
+            brew install cocoapods
+          fi
+          pod --version
       - run: npm ci
       - name: Prepare NativeScript iOS project
         run: npx --yes --package=nativescript@9.1.1 ns prepare ios
