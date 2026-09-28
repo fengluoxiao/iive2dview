@@ -106,17 +106,18 @@ jobs:
           test -n "$project"
           mkdir -p artifacts/build
           if ! xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR="$PWD/artifacts/build" build 2>&1 | tee xcodebuild.log; then
-            if grep -qi 'Undefined symbols' xcodebuild.log; then
-              grep -i -A 30 'Undefined symbols' xcodebuild.log > xcodebuild-errors.log
-            elif ! grep -iE 'error:|fatal error|undefined symbol|ld:' xcodebuild.log | tail -n 25 > xcodebuild-errors.log; then
-              tail -n 25 xcodebuild.log > xcodebuild-errors.log
-            fi
+            grep -iE 'error:|fatal error|undefined symbol|ld:|BUILD FAILED' xcodebuild.log | tail -n 40 > xcodebuild-errors.log || true
+            tail -n 80 xcodebuild.log >> xcodebuild-errors.log
             summary="$(tr '\n' ' ' < xcodebuild-errors.log)"
             printf '::error title=Unsigned iPhone build::%s\n' "$summary"
             exit 1
           fi
           app="$(find artifacts/build -maxdepth 1 -name '*.app' -type d -print -quit)"
-          test -n "$app"
+          if [ -z "$app" ]; then
+            find artifacts -maxdepth 4 -print | sort
+            printf '::error title=Unsigned iPhone build::xcodebuild completed but no .app exists in artifacts/build\n'
+            exit 1
+          fi
           mkdir -p artifacts/Payload
           cp -R "$app" artifacts/Payload/
           (cd artifacts && zip -qry live2d-native-unsigned.ipa Payload)
@@ -130,3 +131,10 @@ jobs:
           name: ${{ inputs.sign == true && 'live2d-native-signed-ipa' || 'live2d-native-unsigned-ipa' }}
           path: ${{ inputs.sign == true && 'native-vue/platforms/ios/**/*.ipa' || 'native-vue/artifacts/live2d-native-unsigned.ipa' }}
           if-no-files-found: error
+      - name: Upload build diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: live2d-native-build-diagnostics
+          path: native-vue/xcodebuild.log
+          if-no-files-found: warn
