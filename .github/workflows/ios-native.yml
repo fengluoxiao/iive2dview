@@ -119,11 +119,8 @@ jobs:
           fi
           echo "Building workspace=$workspace scheme=$scheme"
 
-          # Keep Xcode's build products in the checkout. This preserves the
-          # CocoaPods-derived framework paths and gives packaging a stable app path.
-          derived_data="$PWD/build/DerivedData"
           set -o pipefail
-          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO build 2>&1 | tee xcodebuild.log
           build_status="${PIPESTATUS[0]}"
           if [ "$build_status" -ne 0 ]; then
             {
@@ -135,10 +132,19 @@ jobs:
             printf '::error title=Unsigned iPhone build::xcodebuild failed; see the relevant Xcode diagnostics emitted above and the diagnostics artifact.\n'
             exit "$build_status"
           fi
-          app="$(find "$derived_data/Build/Products/Release-iphoneos" -name '*.app' -type d -print -quit)"
-          if [ -z "$app" ]; then
-            find "$derived_data/Build/Products" -maxdepth 4 -print | sort || true
-            printf '::error title=Unsigned iPhone build::xcodebuild completed but no iPhone .app exists in DerivedData\n'
+          # Ask Xcode where this scheme actually emitted the app. NativeScript
+          # and CocoaPods own this location, so do not override build settings.
+          settings="$(xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO -showBuildSettings)"
+          target_build_dir="$(printf '%s\n' "$settings" | sed -n 's/^[[:space:]]*TARGET_BUILD_DIR = //p' | head -n 1)"
+          wrapper_name="$(printf '%s\n' "$settings" | sed -n 's/^[[:space:]]*WRAPPER_NAME = //p' | head -n 1)"
+          if [ -z "$target_build_dir" ] || [ -z "$wrapper_name" ]; then
+            printf '::error title=Unsigned iPhone build::Xcode did not report a target app output path\n'
+            exit 1
+          fi
+          app="$target_build_dir/$wrapper_name"
+          if [ ! -d "$app" ]; then
+            printf 'Xcode reported app path: %s\n' "$app"
+            printf '::error title=Unsigned iPhone build::xcodebuild completed but its reported iPhone .app does not exist\n'
             exit 1
           fi
           mkdir -p artifacts/Payload
