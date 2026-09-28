@@ -132,24 +132,60 @@ jobs:
             printf '::error title=Unsigned iPhone build::xcodebuild failed; see the relevant Xcode diagnostics emitted above and the diagnostics artifact.\n'
             exit "$build_status"
           fi
-          # Ask Xcode where this scheme actually emitted the app. NativeScript
-          # and CocoaPods own this location, so do not override build settings.
+          # A workspace reports settings for the app plus every Pod target.
+          # Keep TARGET_BUILD_DIR and WRAPPER_NAME from the same target block,
+          # and accept only the block which produces an application bundle.
           settings="$(xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO -showBuildSettings)"
-          target_build_dir="$(printf '%s\n' "$settings" | sed -n 's/^[[:space:]]*TARGET_BUILD_DIR = //p' | head -n 1)"
-          wrapper_name="$(printf '%s\n' "$settings" | sed -n 's/^[[:space:]]*WRAPPER_NAME = //p' | head -n 1)"
-          if [ -z "$target_build_dir" ] || [ -z "$wrapper_name" ]; then
+          app="$(printf '%s\n' "$settings" | awk '
+            function emit_app() {
+              if (wrapper_extension == "app" && target_build_dir != "" && wrapper_name != "") {
+                print target_build_dir "/" wrapper_name
+                found = 1
+                exit
+              }
+            }
+            /^Build settings for action .* target / {
+              emit_app()
+              target_build_dir = ""
+              wrapper_name = ""
+              wrapper_extension = ""
+              next
+            }
+            /^[[:space:]]*TARGET_BUILD_DIR = / {
+              sub(/^[[:space:]]*TARGET_BUILD_DIR = /, "")
+              target_build_dir = $0
+              next
+            }
+            /^[[:space:]]*WRAPPER_NAME = / {
+              sub(/^[[:space:]]*WRAPPER_NAME = /, "")
+              wrapper_name = $0
+              next
+            }
+            /^[[:space:]]*WRAPPER_EXTENSION = / {
+              sub(/^[[:space:]]*WRAPPER_EXTENSION = /, "")
+              wrapper_extension = $0
+              next
+            }
+            END { if (!found) emit_app() }
+          ')"
+          if [ -z "$app" ]; then
             printf '::error title=Unsigned iPhone build::Xcode did not report a target app output path\n'
             exit 1
           fi
-          app="$target_build_dir/$wrapper_name"
-          if [ ! -d "$app" ]; then
+          if [ ! -d "$app" ] || [ ! -f "$app/Info.plist" ]; then
             printf 'Xcode reported app path: %s\n' "$app"
-            printf '::error title=Unsigned iPhone build::xcodebuild completed but its reported iPhone .app does not exist\n'
+            printf '::error title=Unsigned iPhone build::xcodebuild completed but its reported app bundle is invalid\n'
             exit 1
           fi
           mkdir -p artifacts/Payload
           cp -R "$app" artifacts/Payload/
           (cd artifacts && zip -qry live2d-native-unsigned.ipa Payload)
+          ipa_contents="$(unzip -Z1 artifacts/live2d-native-unsigned.ipa)"
+          if ! grep -qE '^Payload/[^/]+\.app/Info\.plist$' <<< "$ipa_contents"; then
+            printf '%s\n' "$ipa_contents"
+            printf '::error title=Unsigned iPhone build::IPA does not contain Payload/<app>.app/Info.plist\n'
+            exit 1
+          fi
       - name: Build enterprise-signed IPA
         if: ${{ inputs.sign == true }}
         run: npx --yes --package=nativescript@9.1.1 ns build ios --for-device --release --env.uglify
