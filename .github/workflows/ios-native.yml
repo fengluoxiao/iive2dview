@@ -102,7 +102,7 @@ jobs:
         if: ${{ inputs.sign != true }}
         run: |
           set -euo pipefail
-          project="$(find platforms/ios -name '*.xcodeproj' -type d -print -quit)"
+          project="$(find platforms/ios -path '*/Pods/*' -prune -o -name '*.xcodeproj' -type d -print -quit)"
           test -n "$project"
           mkdir -p artifacts/build
           if ! xcodebuild -project "$project" -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR="$PWD/artifacts/build" build 2>&1 | tee xcodebuild.log; then
