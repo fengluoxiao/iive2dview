@@ -41,9 +41,12 @@ jobs:
         run: |
           set -o pipefail
           if ! npx --yes --package=nativescript@9.1.1 ns prepare ios 2>&1 | tee nativescript-prepare.log; then
+            if ! grep -iE 'error|failed|cannot|not found' nativescript-prepare.log | tail -n 25 > nativescript-prepare-errors.log; then
+              tail -n 25 nativescript-prepare.log > nativescript-prepare-errors.log
+            fi
             while IFS= read -r line; do
               printf '::error title=NativeScript iOS prepare::%s\n' "$line"
-            done < <(tail -n 50 nativescript-prepare.log)
+            done < nativescript-prepare-errors.log
             exit 1
           fi
       - name: Verify the Cubism Native dependency
