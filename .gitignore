@@ -30,5 +30,7 @@ native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.io
 native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/SceneDelegate.h
 native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/SceneDelegate.mm
 native-vue/packages/live2d-native-metal/vendor/Cubism/Samples/Metal/Demo/proj.ios.cmake/src/main.m
+native-vue/packages/live2d-native-metal/Resources/FrameworkMetallibs/
+native-vue/packages/live2d-native-metal/Resources/Shaders/
 _local-model-backup/
 vite*.log

@@ -37,6 +37,8 @@ jobs:
       - run: npm ci
       - name: Add NativeScript iOS runtime
         run: npx --yes --package=nativescript@9.1.1 ns platform add ios
+      - name: Compile Cubism Metal shaders
+        run: bash scripts/compile-cubism-metal.sh iphoneos
       - name: Prepare NativeScript iOS project
         run: |
           set -o pipefail

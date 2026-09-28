@@ -44,7 +44,7 @@ namespace LAppDefine {
     // シェーダー相対パス
     const csmChar* ShaderPath = "Shaders/";
     // シェーダー本体
-    const csmChar* ShaderName = "SpriteEffect.metal";
+    const csmChar* ShaderName = "SpriteEffect.metal.txt";
 
     // モデル定義------------------------------------------
     // 外部定義ファイル(json)と合わせる

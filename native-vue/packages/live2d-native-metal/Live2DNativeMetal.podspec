@@ -26,9 +26,12 @@ Pod::Spec.new do |spec|
     "#{sample}/AppDelegate.{h,mm}",
     "#{sample}/SceneDelegate.{h,mm}",
   ]
+  # Cubism's blend shader fragments need distinct compiler defines and are
+  # generated into Resources/FrameworkMetallibs by scripts/compile-cubism-metal.sh.
+  # Keeping the fragments in `resources` makes Xcode compile them independently.
   spec.resources = [
-    "#{sdk}/Framework/src/Rendering/Metal/Shaders/*",
-    "#{sample}/Shaders/*",
+    'Resources/FrameworkMetallibs',
+    'Resources/Shaders',
   ]
   spec.vendored_libraries = "#{sdk}/Core/lib/ios/Release-iphoneos/libLive2DCubismCore.a"
   spec.dependency 'SSZipArchive', '~> 2.5'
