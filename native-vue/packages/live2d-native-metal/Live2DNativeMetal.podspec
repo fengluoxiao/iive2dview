@@ -9,7 +9,7 @@ Pod::Spec.new do |spec|
   spec.source = { :path => '.' }
   spec.requires_arc = false
 
-  sdk = '../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5'
+  sdk = File.expand_path('../../vendor/CubismSdkForNative-5-r.5/CubismSdkForNative-5-r.5', __dir__)
   sample = "#{sdk}/Samples/Metal/Demo/proj.ios.cmake/src"
 
   spec.source_files = [
