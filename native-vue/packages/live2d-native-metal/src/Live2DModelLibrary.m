@@ -5,15 +5,18 @@ NSArray<NSDictionary*>* Live2DScanModels(NSURL* root, NSString* prefix, BOOL leg
     NSMutableArray* result = [NSMutableArray array];
     NSFileManager* fm = NSFileManager.defaultManager;
     if (![fm fileExistsAtPath:root.path]) return result;
+    NSMutableArray* failures = [NSMutableArray array];
     NSDirectoryEnumerator* files = [fm enumeratorAtURL:root
         includingPropertiesForKeys:@[NSURLIsRegularFileKey, NSURLIsSymbolicLinkKey]
         options:NSDirectoryEnumerationSkipsHiddenFiles errorHandler:^BOOL(NSURL* url, NSError* failure) {
-            if (error && !*error) *error = failure;
+            if (!failures.count) [failures addObject:failure];
             return YES;
         }];
     for (NSURL* url in files) {
         NSNumber* link = nil; [url getResourceValue:&link forKey:NSURLIsSymbolicLinkKey error:nil];
-        if (link.boolValue) { [files skipDescendants]; continue; }
+        // NSDirectoryEnumerator does not descend into symbolic links. Calling
+        // skipDescendants on a non-directory can skip unrelated pending entries.
+        if (link.boolValue) continue;
         if (![url.lastPathComponent.lowercaseString hasSuffix:@".model3.json"]) continue;
         NSNumber* regular = nil; [url getResourceValue:&regular forKey:NSURLIsRegularFileKey error:nil];
         NSString* relative = Live2DModelIdentifier(root, url);
@@ -28,6 +31,7 @@ NSArray<NSDictionary*>* Live2DScanModels(NSURL* root, NSString* prefix, BOOL leg
         [result addObject:@{@"id": [prefix stringByAppendingString:relative], @"character": character,
                             @"outfit": outfit, @"url": url}];
     }
+    if (error && failures.count) *error = failures.firstObject;
     return result;
 }
 

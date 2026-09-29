@@ -43,7 +43,8 @@ int main(void) {
         require([old[0][@"id"] isEqual:identifier] && [old[0][@"character"] isEqual:@"祥子 夏服"], @"Legacy IDs and grouping preserved");
         NSURL* outside = [root URLByAppendingPathComponent:@"outside"];
         require([fm createSymbolicLinkAtURL:outside withDestinationURL:temporary error:&error], @"Create external link");
-        require(Live2DScanModels(root, @"models/", NO, &error).count == 1, @"Do not traverse external symlinks");
+        NSArray* withLink = Live2DScanModels(root, @"models/", NO, &error);
+        require(withLink.count == 1, [NSString stringWithFormat:@"Do not traverse external symlinks: %@", [withLink valueForKey:@"id"]]);
         NSURL* wrapper = [root URLByAppendingPathComponent:@"12345678-1234-1234-1234-123456789abc/sakiko/casual/test.MODEL3.JSON"];
         [fm createDirectoryAtURL:wrapper.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
         [@"{}" writeToURL:wrapper atomically:YES encoding:NSUTF8StringEncoding error:nil];

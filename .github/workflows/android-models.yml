@@ -1,10 +1,6 @@
 name: Android model directory
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'expo-live2d/**'
-      - '.github/workflows/android-models.yml'
 jobs:
   build:
     runs-on: ubuntu-latest
