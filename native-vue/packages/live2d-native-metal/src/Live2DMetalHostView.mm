@@ -61,6 +61,8 @@ void InitializeCubismOnce()
     NSString* _studioStatus;
     BOOL _studioBlink;
     BOOL _studioInitialized;
+    BOOL _studioImporting;
+    NSString* _studioPendingModelId;
     NSInteger _studioExpressionIndex;
     Live2DStudioMedia* _studioMedia;
 }
@@ -308,13 +310,18 @@ void InitializeCubismOnce()
 {
     NSString* type = command[@"type"];
     LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
-    if (!_studioInitialized && self.window && self.bounds.size.width > 0 && self.bounds.size.height > 0) {
+    if (!_studioInitialized && UIApplication.sharedApplication.applicationState == UIApplicationStateActive && self.window && self.bounds.size.width > 0 && self.bounds.size.height > 0) {
         _studioInitialized = YES;
         [self studioScanLibrary];
         NSString* last = [[NSUserDefaults standardUserDefaults] stringForKey:@"studioLastModel"];
         BOOL found = NO;
         for (NSDictionary* item in _studioCatalog) if ([item[@"id"] isEqual:last]) found = YES;
         if (!_studioModelId && _studioCatalog.count) [self studioLoadModel:found ? last : _studioCatalog[0][@"id"]];
+        model = [[LAppLive2DManager getInstance] getModel:0];
+    }
+    if (_studioPendingModelId && UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
+        [self studioLoadModel:_studioPendingModelId];
+        [_studioPendingModelId release]; _studioPendingModelId = nil;
         model = [[LAppLive2DManager getInstance] getModel:0];
     }
     if ([type isEqual:@"import"]) {
@@ -370,6 +377,9 @@ void InitializeCubismOnce()
 
 - (void)presentModelImporter
 {
+    if (_studioImporting) {
+        [self studioSetStatus:@"模型正在导入，请等待当前复制完成"]; [self studioEmitState]; return;
+    }
     UIViewController* presenter = [self activePresenter];
     if (presenter == nil) {
         return;
@@ -453,59 +463,83 @@ void InitializeCubismOnce()
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
 {
     NSURL* selectedURL = urls.firstObject;
-    if (selectedURL == nil) {
-        return;
-    }
+    if (!selectedURL || _studioImporting) return;
+    _studioImporting = YES;
+    [self studioSetStatus:@"正在导入：等待云盘下载并复制模型，请稍候…"];
+    [self studioEmitState];
 
-    NSFileManager* fileManager = [NSFileManager defaultManager];
-    NSURL* appSupport = [fileManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* modelsDirectory = [appSupport URLByAppendingPathComponent:@"Live2DModels" isDirectory:YES];
-    [fileManager createDirectoryAtURL:modelsDirectory withIntermediateDirectories:YES attributes:nil error:nil];
-    NSURL* destination = [modelsDirectory URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
-    [fileManager createDirectoryAtURL:destination withIntermediateDirectories:YES attributes:nil error:nil];
-
-    __block BOOL imported = NO;
-    if ([selectedURL.pathExtension caseInsensitiveCompare:@"zip"] == NSOrderedSame) {
-        imported = [SSZipArchive unzipFileAtPath:selectedURL.path toDestination:destination.path];
-    } else {
-        BOOL accessing = [selectedURL startAccessingSecurityScopedResource];
-        if (accessing) {
-            NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+    // iCloud coordination can download an entire directory. Never block UIKit
+    // while waiting for the file provider, and hold access until copying ends.
+    BOOL accessing = [selectedURL startAccessingSecurityScopedResource];
+    NSURL* library = [self studioLibraryURL];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        @autoreleasepool {
+            NSFileManager* fm = NSFileManager.defaultManager;
+            NSURL* destination = [library URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+            NSError* setupError = nil;
+            BOOL created = [fm createDirectoryAtURL:destination withIntermediateDirectories:YES attributes:nil error:&setupError];
+            __block BOOL imported = NO;
+            __block NSError* copyError = nil;
             NSError* coordinationError = nil;
+            NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
             @try {
-                [coordinator coordinateReadingItemAtURL:selectedURL
-                                               options:0
-                                                 error:&coordinationError
-                                            byAccessor:^(NSURL* readableURL) {
-                    NSURL* importedDirectory = [destination URLByAppendingPathComponent:selectedURL.lastPathComponent isDirectory:YES];
-                    imported = [fileManager copyItemAtURL:readableURL toURL:importedDirectory error:nil];
-                }];
-                if (coordinationError != nil) {
-                    imported = NO;
+                if (created) {
+                    [coordinator coordinateReadingItemAtURL:selectedURL options:0 error:&coordinationError byAccessor:^(NSURL* readableURL) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self studioSetStatus:@"正在复制并检查模型文件…"]; [self studioEmitState];
+                        });
+                        if ([selectedURL.pathExtension caseInsensitiveCompare:@"zip"] == NSOrderedSame) {
+                            // The copied ZIP from UIDocumentPicker may already
+                            // be inside our sandbox and need no security scope.
+                            imported = [SSZipArchive unzipFileAtPath:readableURL.path toDestination:destination.path];
+                            if (!imported) copyError = [NSError errorWithDomain:@"Live2DImport" code:2
+                                userInfo:@{NSLocalizedDescriptionKey: @"ZIP 解压失败，请确认文件已完整下载且未加密"}];
+                        } else {
+                            NSURL* target = [destination URLByAppendingPathComponent:selectedURL.lastPathComponent isDirectory:YES];
+                            // A false startAccessing result is not by itself an
+                            // I/O failure for URLs already accessible to the app.
+                            imported = [fm copyItemAtURL:readableURL toURL:target error:&copyError];
+                        }
+                    }];
                 }
             } @finally {
                 [coordinator release];
-                [selectedURL stopAccessingSecurityScopedResource];
+                if (accessing) [selectedURL stopAccessingSecurityScopedResource];
             }
+            NSError* error = setupError ?: coordinationError ?: copyError;
+            NSURL* modelURL = imported && !error ? [self firstModelURLInDirectory:destination] : nil;
+            NSString* failure = error.localizedDescription;
+            if (!modelURL && !failure) failure = imported
+                ? @"未找到 .model3.json，请选择包含模型配置、moc3 和贴图的文件夹"
+                : @"文件提供方未允许读取，请先在“文件”中下载该文件夹后重试";
+            if (!modelURL && created) [fm removeItemAtURL:destination error:nil];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self->_studioImporting = NO;
+                if (!modelURL) {
+                    [self studioSetStatus:[NSString stringWithFormat:@"导入失败：%@", failure]];
+                    [self studioEmitState]; return;
+                }
+                [self->_importDirectory release];
+                self->_importDirectory = [destination retain];
+                [self studioSetStatus:@"复制完成，正在加载模型…"]; [self studioEmitState];
+                [self studioScanLibrary];
+                NSString* identifier = Live2DModelIdentifier(library, modelURL);
+                if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
+                    [self studioLoadModel:identifier];
+                } else {
+                    [self->_studioPendingModelId release];
+                    self->_studioPendingModelId = [identifier copy];
+                    [self studioSetStatus:@"复制完成，返回应用后加载模型"];
+                }
+                [self studioEmitState];
+            });
         }
-    }
-    if (!imported) {
-        [fileManager removeItemAtURL:destination error:nil];
-        [self studioSetStatus:@"导入失败，请确认文件已下载且允许访问"]; [self studioEmitState];
-        return;
-    }
+    });
+}
 
-    NSURL* modelURL = [self firstModelURLInDirectory:destination];
-    if (modelURL == nil) {
-        [fileManager removeItemAtURL:destination error:nil];
-        [self studioSetStatus:@"未找到 .model3.json，请导入完整模型目录或 ZIP"]; [self studioEmitState];
-        return;
-    }
-    [_importDirectory release];
-    _importDirectory = [destination retain];
-    [self studioScanLibrary];
-    [self studioLoadModel:Live2DModelIdentifier([self studioLibraryURL], modelURL)];
-    [self studioEmitState];
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller
+{
+    [self studioSetStatus:@"已取消导入"]; [self studioEmitState];
 }
 
 - (NSURL*)firstModelURLInDirectory:(NSURL*)directory
@@ -540,6 +574,7 @@ void InitializeCubismOnce()
     [_parameterValues release];
     [_studioCatalog release];
     [_studioModelURLs release];
+    [_studioPendingModelId release];
     [_studioMetadata release];
     [_studioModelId release];
     [_studioDirection release];
