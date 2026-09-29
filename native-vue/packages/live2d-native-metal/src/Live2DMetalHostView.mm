@@ -109,17 +109,66 @@ void InitializeCubismOnce()
 
 - (void)presentModelImporter
 {
-    UTType* zipType = [UTType typeWithFilenameExtension:@"zip"];
-    UTType* folderType = [UTType typeWithIdentifier:@"public.folder"];
+    UIViewController* presenter = [self activePresenter];
+    if (presenter == nil) {
+        return;
+    }
+
+    UIAlertController* sourcePicker = [UIAlertController
+        alertControllerWithTitle:@"Import Live2D model"
+        message:@"Choose a model folder or a ZIP archive."
+        preferredStyle:UIAlertControllerStyleActionSheet];
+    __weak typeof(self) weakSelf = self;
+    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import folder"
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:^(__unused UIAlertAction* action) {
+        [weakSelf presentModelPickerForContentTypes:@[UTType.folder]];
+    }]];
+    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import ZIP"
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:^(__unused UIAlertAction* action) {
+        UTType* zipType = [UTType typeWithFilenameExtension:@"zip"];
+        [weakSelf presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
+    }]];
+    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                     style:UIAlertActionStyleCancel
+                                                   handler:nil]];
+
+    // An action sheet needs a source rectangle when this host is ever used on
+    // an iPad. On iPhone it remains the normal bottom sheet.
+    UIPopoverPresentationController* popover = sourcePicker.popoverPresentationController;
+    if (popover != nil) {
+        popover.sourceView = self;
+        popover.sourceRect = self.bounds;
+    }
+    [presenter presentViewController:sourcePicker animated:YES completion:nil];
+}
+
+- (UIViewController*)activePresenter
+{
+    UIViewController* presenter = self.window.rootViewController;
+    while (presenter.presentedViewController != nil) {
+        presenter = presenter.presentedViewController;
+    }
+    return presenter;
+}
+
+- (void)presentModelPickerForContentTypes:(NSArray<UTType*>*)contentTypes
+{
+    if (contentTypes.count == 0) {
+        return;
+    }
+
     UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
-        initForOpeningContentTypes:@[zipType, folderType]
+        initForOpeningContentTypes:contentTypes
         asCopy:YES];
     picker.delegate = self;
     picker.modalPresentationStyle = UIModalPresentationFormSheet;
 
-    UIViewController* presenter = self.window.rootViewController;
-    while (presenter.presentedViewController != nil) {
-        presenter = presenter.presentedViewController;
+    UIViewController* presenter = [self activePresenter];
+    if (presenter == nil) {
+        [picker release];
+        return;
     }
     [presenter presentViewController:picker animated:YES completion:nil];
     [picker release];
