@@ -58,6 +58,7 @@ jobs:
           xcodebuild -list -workspace "$workspace" | tee xcodebuild-schemes.log
           sed -n '/Schemes:/,$p' xcodebuild-schemes.log | sed -n 's/^[[:space:]]*//p' | grep -Fx "$scheme"
           derived_data="$RUNNER_TEMP/live2d-expo-derived-data"
+          set +e
           xcodebuild \
             -workspace "$workspace" \
             -scheme "$scheme" \
@@ -69,6 +70,14 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             build 2>&1 | tee xcodebuild.log
+          build_status="${PIPESTATUS[0]}"
+          set -e
+          if [ "$build_status" -ne 0 ]; then
+            while IFS= read -r line; do
+              printf '::error title=Xcode build::%s\n' "$line"
+            done < <(grep -E 'error:|fatal error:|Undefined symbols|ld: ' xcodebuild.log | tail -n 30 || true)
+            exit "$build_status"
+          fi
           app_info_plists="$(find "$derived_data/Build/Products/Release-iphoneos" -type f -path '*.app/Info.plist' -print)"
           app_count="$(printf '%s\n' "$app_info_plists" | sed '/^$/d' | wc -l | tr -d ' ')"
           test "$app_count" = 1
