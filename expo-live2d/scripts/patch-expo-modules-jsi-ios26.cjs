@@ -48,7 +48,39 @@ if (patchedScheduler !== schedulerSource) {
   fs.writeFileSync(schedulerHeader, patchedScheduler);
 }
 
+const uncheckedSendableTypes = [
+  [
+    path.join(packageRoot, 'ExpoModulesJSI', 'Runtime', 'JavaScriptPropNameID.swift'),
+    'public final class JavaScriptPropNameID: JavaScriptType {',
+    'public final class JavaScriptPropNameID: JavaScriptType, @unchecked Sendable {',
+  ],
+  [
+    path.join(packageRoot, 'ExpoModulesJSI', 'Runtime', 'Values', 'JavaScriptError.swift'),
+    'public final class JavaScriptError: Error, Sendable {',
+    'public final class JavaScriptError: Error, @unchecked Sendable {',
+  ],
+  [
+    path.join(packageRoot, 'ExpoModulesJSI', 'Runtime', 'Values', 'JavaScriptValue.swift'),
+    'public final class JavaScriptValue: JavaScriptType, Equatable, Escapable {',
+    'public final class JavaScriptValue: JavaScriptType, Equatable, Escapable, @unchecked Sendable {',
+  ],
+];
+
+let sendableTypesUpdated = 0;
+for (const [filePath, originalDeclaration, patchedDeclaration] of uncheckedSendableTypes) {
+  const source = fs.readFileSync(filePath, 'utf8');
+  const patched = source.replace(originalDeclaration, patchedDeclaration);
+  if (patched === source && !source.includes(patchedDeclaration)) {
+    throw new Error(`Unable to apply the Swift Sendable compatibility patch: ${filePath}`);
+  }
+  if (patched !== source) {
+    fs.writeFileSync(filePath, patched);
+    sendableTypesUpdated += 1;
+  }
+}
+
 console.log(
   `[iOS 26 compatibility] ExpoModulesJSI patched: ${swiftFilesUpdated} Swift files, ` +
-    `${patchedScheduler === schedulerSource ? 0 : 1} C++ header.`,
+    `${patchedScheduler === schedulerSource ? 0 : 1} C++ header, ` +
+    `${sendableTypesUpdated} Sendable declarations.`,
 );
