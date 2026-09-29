@@ -125,8 +125,21 @@ void LAppModel::LoadAssets(const csmChar* dir, const csmChar* fileName)
     const csmString path = csmString(dir) + fileName;
 
     csmByte* buffer = CreateBuffer(path.GetRawString(), &size);
-    ICubismModelSetting* setting = new CubismModelSettingJson(buffer, size);
+    if (buffer == NULL || size == 0)
+    {
+        LAppPal::PrintLogLn("Failed to load model setting: %s", path.GetRawString());
+        return;
+    }
+
+    CubismModelSettingJson* setting = new CubismModelSettingJson(buffer, size);
     DeleteBuffer(buffer, path.GetRawString());
+
+    if (setting->GetJsonPointer() == NULL)
+    {
+        LAppPal::PrintLogLn("Invalid model setting JSON: %s", path.GetRawString());
+        delete setting;
+        return;
+    }
 
     SetupModel(setting);
 

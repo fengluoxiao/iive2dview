@@ -26,17 +26,31 @@ double LAppPal::s_deltaTime = 0.0;
 
 csmByte* LAppPal::LoadFileAsBytes(const string filePath, csmSizeInt* outSize)
 {
-    int path_i = static_cast<int>(filePath.find_last_of("/")+1);
-    int ext_i = static_cast<int>(filePath.find_last_of("."));
-    std::string pathname = filePath.substr(0,path_i);
-    std::string extname = filePath.substr(ext_i,filePath.size()-ext_i);
-    std::string filename = filePath.substr(path_i,ext_i-path_i);
-    NSString* castFilePath = [[NSBundle mainBundle]
-                              pathForResource:[NSString stringWithUTF8String:filename.c_str()]
-                              ofType:[NSString stringWithUTF8String:extname.c_str()]
-                              inDirectory:[NSString stringWithUTF8String:pathname.c_str()]];
+    if (outSize == NULL)
+    {
+        return NULL;
+    }
+    *outSize = 0;
 
-    NSData *data = [NSData dataWithContentsOfFile:castFilePath];
+    NSString* requestedPath = [NSString stringWithUTF8String:filePath.c_str()];
+    NSData* data = requestedPath == nil ? nil : [NSData dataWithContentsOfFile:requestedPath];
+
+    // Models imported through UIDocumentPicker are copied into Application
+    // Support, not the application bundle. The upstream sample only resolves
+    // bundle resources, which turns every imported file into a null buffer.
+    if (data == nil)
+    {
+        int path_i = static_cast<int>(filePath.find_last_of("/") + 1);
+        int ext_i = static_cast<int>(filePath.find_last_of("."));
+        std::string pathname = filePath.substr(0, path_i);
+        std::string extname = filePath.substr(ext_i, filePath.size() - ext_i);
+        std::string filename = filePath.substr(path_i, ext_i - path_i);
+        NSString* bundlePath = [[NSBundle mainBundle]
+            pathForResource:[NSString stringWithUTF8String:filename.c_str()]
+                     ofType:[NSString stringWithUTF8String:extname.c_str()]
+                inDirectory:[NSString stringWithUTF8String:pathname.c_str()]];
+        data = [NSData dataWithContentsOfFile:bundlePath];
+    }
 
     if (data == nil)
     {
