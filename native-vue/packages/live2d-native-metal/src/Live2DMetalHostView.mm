@@ -122,7 +122,8 @@ void InitializeCubismOnce()
                                                      style:UIAlertActionStyleDefault
                                                    handler:^(UIAlertAction* action) {
         (void)action;
-        [self presentModelPickerForContentTypes:@[UTType.folder]];
+        UTType* folderType = [UTType typeWithIdentifier:@"public.folder"];
+        [self presentModelPickerForContentTypes:(folderType == nil ? @[] : @[folderType])];
     }]];
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import ZIP"
                                                      style:UIAlertActionStyleDefault
