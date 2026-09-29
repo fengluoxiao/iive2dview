@@ -89,6 +89,9 @@
 - (NSDictionary*)studioViewState;
 @property (nonatomic) BOOL studioMirrored;
 @property (nonatomic, copy) void (^studioFrameHandler)(id<MTLTexture> texture, id<MTLCommandBuffer> commandBuffer);
+@property (nonatomic, copy) void (^studioRenderErrorHandler)(NSString* message);
+- (void)setStudioPipActive:(BOOL)active;
+- (void)renderStudioPipLayer:(CAMetalLayer*)layer;
 - (void)setStudioQuality:(NSString*)quality;
 
 /**

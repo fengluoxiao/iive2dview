@@ -5,7 +5,7 @@ Pod::Spec.new do |spec|
   spec.homepage = 'https://www.live2d.com/'
   spec.license = { :type => 'Live2D Open Software License' }
   spec.authors = { 'Live2D' => 'https://www.live2d.com/' }
-  spec.platform = :ios, '16.0'
+  spec.platform = :ios, '18.0'
   spec.source = { :path => '.' }
   spec.requires_arc = false
 

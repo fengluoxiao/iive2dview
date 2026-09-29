@@ -16,7 +16,7 @@ Source of truth: `../src/App.tsx`, `../src/styles.css`, `../src/live2d.ts` (loca
 - [ ] Pan, pinch and scale slider agree; mirror; reset pose/position/expression without resetting zoom.
 - [ ] Auto/smooth/sharp quality modes with actual drawable sizing; real frame/update metrics.
 - [ ] PNG export via native Metal capture and iOS share sheet.
-- [ ] Native live PiP with AVKit, lifecycle/error handling and actual rendered frames. User explicitly chose: freeze last frame in background; resume live model on returning to app. Apple prohibits Metal command submission in background.
+- [ ] Native live PiP with AVKit, lifecycle/error handling and actual rendered frames. Updated user requirement: keep rendering live in background PiP; the earlier frozen-frame choice was withdrawn.
 - [ ] Lint, TypeScript, meaningful behavior checks, native CI build, UI visual verification, unsigned IPA delivery.
 
 ## Constraints
@@ -34,5 +34,5 @@ Source of truth: `../src/App.tsx`, `../src/styles.css`, `../src/live2d.ts` (loca
 - Direction selection, filename fallback, face parameter mappings and labels pass four Node tests. TypeScript and Expo lint are required in CI before native compilation.
 - Final native Expo build for `3919655` succeeded: https://github.com/fengluoxiao/iive2dview/actions/runs/36558031215 . Unsigned artifact: `live2d-expo-metal-unsigned-ipa` (11028307456).
 - Final UI interaction checks: dragging the face-angle slider changed 0 to 16, face reset returned it to 0, the mobile sheet closed correctly, and the wide layout had no horizontal overflow. Stage rotation now preserves zoom.
-- PiP stops new Metal submissions while inactive. It retains the last sample in the background and resumes captures when active; PiP captures are capped at 30 FPS and a 960-pixel longest edge, while PNG export keeps render resolution.
+- PiP now uses an MTKView inside AVPictureInPictureVideoCallViewController, with one active rendering surface at a time. iOS 18+ expressly supports this source view: https://developer.apple.com/documentation/avkit/adopting-picture-in-picture-for-video-calls . The ordinary application layer still stops while backgrounded; the system-hosted PiP view drives real-time animation, with GPU error reporting. This replacement requires a fresh native build and device testing. PNG export remains a separate readback path.
 - Device acceptance still required: model import/relaunch, all controls with a real model, PNG sharing, PiP start/background/foreground, and gesture regression. The latest user-verified baseline before the full Studio port is `68d8b8c` (Expo Run 32).

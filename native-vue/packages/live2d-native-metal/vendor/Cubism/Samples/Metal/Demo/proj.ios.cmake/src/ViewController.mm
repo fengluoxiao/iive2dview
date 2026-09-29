@@ -51,6 +51,10 @@ using namespace LAppDefine;
     double _studioUpdateMs;
     BOOL _studioAutoQuality;
     id<MTLCommandBuffer> _lastStudioCommandBuffer;
+    BOOL _studioPipActive;
+    BOOL _studioPipFailed;
+    CAMetalLayer* _studioPipLayer; // Only set during the MTKView draw callback.
+    CFTimeInterval _studioLastPipDraw;
 }
 
 - (void)releaseView
@@ -603,13 +607,38 @@ using namespace LAppDefine;
     }
 }
 
+- (void)setStudioPipActive:(BOOL)active
+{
+    _studioPipActive = active;
+    _studioPipFailed = NO;
+    _studioLastPipDraw = 0;
+    LAppPal::UpdateTime();
+    _studioFrameStart = 0; _studioFrames = 0;
+}
+
+- (void)renderStudioPipLayer:(CAMetalLayer*)layer
+{
+    if (!_studioPipActive || _studioPipFailed) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (now - _studioLastPipDraw > 0.25) LAppPal::UpdateTime();
+    _studioLastPipDraw = now;
+    _studioPipLayer = layer;
+    [self renderToMetalLayer:layer];
+    _studioPipLayer = nil;
+}
+
 - (void)renderToMetalLayer:(nonnull CAMetalLayer *)layer
 {
-    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
-    if (layer == nil || layer.drawableSize.width <= 0 || layer.drawableSize.height <= 0 || _commandQueue == nil || _depthTexture == nil)
+    const BOOL pipFrame = _studioPipActive && layer == _studioPipLayer;
+    if (!pipFrame && (_studioPipActive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive)) return;
+    if (layer == nil || layer.drawableSize.width <= 0 || layer.drawableSize.height <= 0 || _commandQueue == nil)
     {
         return;
     }
+
+    if (!_depthTexture || _depthTexture.width != (NSUInteger)layer.drawableSize.width || _depthTexture.height != (NSUInteger)layer.drawableSize.height)
+        [self drawableResize:layer.drawableSize];
+    if (!_depthTexture) return;
 
     LAppPal::UpdateTime();
 
@@ -651,7 +680,7 @@ using namespace LAppDefine;
         _studioFps = _studioFrames / (updateStart - _studioFrameStart);
         _studioFrames = 0;
         _studioFrameStart = updateStart;
-        if (_studioAutoQuality) {
+        if (_studioAutoQuality && !pipFrame) {
             MetalUIView* view = (MetalUIView*)self.view;
             CGFloat scale = view.studioResolutionScale;
             CGFloat maxScale = self.view.window.screen.nativeScale ?: self.traitCollection.displayScale;
@@ -665,6 +694,16 @@ using namespace LAppDefine;
 
     [commandBuffer presentDrawable:currentDrawable];
     if (self.studioFrameHandler) self.studioFrameHandler(currentDrawable.texture, commandBuffer);
+    if (pipFrame) {
+        [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+            if (completed.status == MTLCommandBufferStatusError) dispatch_async(dispatch_get_main_queue(), ^{
+                if (!self->_studioPipActive || self->_studioPipFailed) return;
+                self->_studioPipFailed = YES;
+                if (self.studioRenderErrorHandler) self.studioRenderErrorHandler(
+                    [NSString stringWithFormat:@"画中画 GPU 渲染失败：%@", completed.error.localizedDescription]);
+            });
+        }];
+    }
     [commandBuffer commit];
     [_lastStudioCommandBuffer release];
     _lastStudioCommandBuffer = [commandBuffer retain];
@@ -675,22 +714,26 @@ using namespace LAppDefine;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_lastStudioCommandBuffer release];
     [_studioFrameHandler release];
+    [_studioRenderErrorHandler release];
     [self releaseView];
     [super dealloc];
 }
 
 - (int)getWindowWidth
 {
+    if (_studioPipLayer) return (int)_studioPipLayer.drawableSize.width;
     return _windowWidth;
 }
 
 - (int)getWindowHeight;
 {
+    if (_studioPipLayer) return (int)_studioPipLayer.drawableSize.height;
     return _windowHeight;
 }
 
 - (MTLViewport) getSafeAreaViewport
 {
+    if (_studioPipLayer) return (MTLViewport){0, 0, _studioPipLayer.drawableSize.width, _studioPipLayer.drawableSize.height, 0, 1};
     CGFloat scale = self.view.bounds.size.width > 0
         ? ((MetalUIView*)self.view).metalLayer.drawableSize.width / self.view.bounds.size.width
         : self.traitCollection.displayScale;

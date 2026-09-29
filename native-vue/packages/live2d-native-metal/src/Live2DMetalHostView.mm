@@ -101,12 +101,15 @@ void InitializeCubismOnce()
         _metalView.userInteractionEnabled = NO;
         [self addSubview:_metalView];
         _studioMedia = [[Live2DStudioMedia alloc] init];
-        [self.layer insertSublayer:_studioMedia.displayLayer atIndex:0];
         Live2DStudioMedia* media = _studioMedia;
         _renderer.studioFrameHandler = ^(id<MTLTexture> texture, id<MTLCommandBuffer> buffer) {
             [media captureTexture:texture commandBuffer:buffer];
         };
         __unsafe_unretained Live2DMetalHostView* host = self;
+        [_studioMedia configureSourceView:_metalView device:[_renderer getDevice]
+            renderHandler:^(CAMetalLayer* layer) { [host->_renderer renderStudioPipLayer:layer]; }
+            activeHandler:^(BOOL active) { [host->_renderer setStudioPipActive:active]; }];
+        _renderer.studioRenderErrorHandler = ^(NSString* message) { [host studioSetStatus:message]; [host studioEmitState]; };
         _studioMedia.statusHandler = ^(NSString* message) { [host studioSetStatus:message]; [host studioEmitState]; };
         _parameterValues = [[NSMutableDictionary alloc] init];
         _studioDirection = [@"C" copy];
@@ -147,7 +150,6 @@ void InitializeCubismOnce()
 - (void)layoutSubviews
 {
     [super layoutSubviews];
-    _studioMedia.displayLayer.frame = self.bounds;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)gesture
@@ -525,6 +527,7 @@ void InitializeCubismOnce()
 {
     [_studioMedia invalidate];
     _renderer.studioFrameHandler = nil;
+    _renderer.studioRenderErrorHandler = nil;
     [_studioMedia release];
     Live2DMetalClearHost(_renderer);
     if (_rendererAttachedToHost) {

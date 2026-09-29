@@ -1,195 +1,182 @@
 #import "Live2DStudioMedia.h"
 #import <CoreImage/CoreImage.h>
-#import <QuartzCore/QuartzCore.h>
-#import <MetalPerformanceShaders/MetalPerformanceShaders.h>
+
+static void* StudioPiPObservation = &StudioPiPObservation;
 
 @implementation Live2DStudioMedia
 {
-    AVSampleBufferDisplayLayer* _displayLayer;
     AVPictureInPictureController* _pip;
+    AVPictureInPictureVideoCallViewController* _pipContent;
+    MTKView* _pipView;
+    UIView* _sourceView; // Host owns this view and invalidates us before release.
+    id<MTLDevice> _device;
+    void (^_renderHandler)(CAMetalLayer*);
+    void (^_activeHandler)(BOOL);
     UIViewController* _exportPresenter;
     BOOL _exportRequested;
-    BOOL _pipRequested;
     BOOL _capturePending;
     BOOL _invalidated;
-    BOOL _playbackPaused;
-    CFTimeInterval _lastCapture;
-    CFTimeInterval _pipRequestTime;
+    BOOL _pipRequested;
+    BOOL _pipStarting;
     CIContext* _imageContext;
 }
-@synthesize displayLayer = _displayLayer;
-
 - (instancetype)init
 {
-    if ((self = [super init])) {
-        _displayLayer = [[AVSampleBufferDisplayLayer alloc] init];
-        _displayLayer.videoGravity = AVLayerVideoGravityResizeAspect;
-        _imageContext = [[CIContext contextWithOptions:nil] retain];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(studioEnteredBackground:)
-            name:UIApplicationDidEnterBackgroundNotification object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(studioBecameActive:)
-            name:UIApplicationDidBecomeActiveNotification object:nil];
-    }
+    if ((self = [super init])) _imageContext = [[CIContext contextWithOptions:nil] retain];
     return self;
+}
+- (void)configureSourceView:(UIView*)source device:(id<MTLDevice>)device
+             renderHandler:(void (^)(CAMetalLayer*))renderHandler activeHandler:(void (^)(BOOL))activeHandler
+{
+    _sourceView = source;
+    [_device release]; _device = [device retain];
+    [_renderHandler release]; _renderHandler = [renderHandler copy];
+    [_activeHandler release]; _activeHandler = [activeHandler copy];
 }
 - (void)requestExportFrom:(UIViewController*)presenter
 {
     if (!presenter) return;
-    [_exportPresenter release]; _exportPresenter = [presenter retain];
-    _exportRequested = YES;
+    [_exportPresenter release]; _exportPresenter = [presenter retain]; _exportRequested = YES;
 }
 - (void)togglePictureInPicture
 {
-    if (_pip.pictureInPictureActive || _pipRequested) {
+    if (_invalidated) return;
+    if (_pip.pictureInPictureActive || _pipRequested || _pipStarting) {
         _pipRequested = NO; [_pip stopPictureInPicture]; return;
     }
-    if (![AVPictureInPictureController isPictureInPictureSupported]) {
-        if (self.statusHandler) self.statusHandler(@"当前设备不支持画中画"); return;
+    if (![AVPictureInPictureController isPictureInPictureSupported] || !_sourceView.window) {
+        if (self.statusHandler) self.statusHandler(@"当前无法开启画中画"); return;
     }
+    // iOS 18+ supports MTKView inside the PiP content controller. Only that
+    // system-hosted visible view renders while the main app is backgrounded.
     NSError* error = nil;
-    AVAudioSession* session = [AVAudioSession sharedInstance];
-    [session setCategory:AVAudioSessionCategoryPlayback mode:AVAudioSessionModeMoviePlayback options:AVAudioSessionCategoryOptionMixWithOthers error:&error];
+    AVAudioSession* session = AVAudioSession.sharedInstance;
+    [session setCategory:AVAudioSessionCategoryPlayback mode:AVAudioSessionModeMoviePlayback
+                options:AVAudioSessionCategoryOptionMixWithOthers error:&error];
     if (!error) [session setActive:YES error:&error];
     if (error) { if (self.statusHandler) self.statusHandler(error.localizedDescription); return; }
     if (!_pip) {
+        _pipContent = [[AVPictureInPictureVideoCallViewController alloc] init];
+        _pipView = [[MTKView alloc] initWithFrame:CGRectZero device:_device];
+        _pipView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+        _pipView.framebufferOnly = NO;
+        _pipView.preferredFramesPerSecond = 60;
+        _pipView.paused = YES;
+        _pipView.delegate = self;
+        _pipView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _pipView.backgroundColor = [UIColor colorWithRed:0.06 green:0.09 blue:0.14 alpha:1];
+        [_pipContent.view addSubview:_pipView];
         AVPictureInPictureControllerContentSource* source = [[AVPictureInPictureControllerContentSource alloc]
-            initWithSampleBufferDisplayLayer:_displayLayer playbackDelegate:self];
+            initWithActiveVideoCallSourceView:_sourceView contentViewController:_pipContent];
         _pip = [[AVPictureInPictureController alloc] initWithContentSource:source];
         [source release]; _pip.delegate = self;
-        _pip.requiresLinearPlayback = YES;
+        _pip.canStartPictureInPictureAutomaticallyFromInline = NO;
+        [_pip addObserver:self forKeyPath:@"pictureInPicturePossible" options:NSKeyValueObservingOptionNew context:StudioPiPObservation];
     }
-    _pipRequested = YES; _pipRequestTime = CACurrentMediaTime();
-    if (self.statusHandler) self.statusHandler(@"正在准备画中画");
+    _pipContent.preferredContentSize = _sourceView.bounds.size;
+    _pipView.frame = _pipContent.view.bounds;
+    _pipRequested = YES;
+    if (self.statusHandler) self.statusHandler(@"正在开启实时画中画");
+    [self startWhenPossible];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (!self->_invalidated && self->_pipRequested) {
+            self->_pipRequested = NO;
+            if (self.statusHandler) self.statusHandler(@"系统尚未允许画中画，请保持应用前台再试");
+        }
+    });
 }
+- (void)startWhenPossible
+{
+    if (_invalidated || !_pipRequested || !_pip.pictureInPicturePossible) return;
+    _pipRequested = NO; _pipStarting = YES; [_pip startPictureInPicture];
+}
+- (void)observeValueForKeyPath:(NSString*)keyPath ofObject:(id)object change:(NSDictionary*)change context:(void*)context
+{
+    if (context == StudioPiPObservation) dispatch_async(dispatch_get_main_queue(), ^{ [self startWhenPossible]; });
+    else [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+}
+- (void)drawInMTKView:(MTKView*)view
+{
+    if (_invalidated || !_pip.pictureInPictureActive || _pip.pictureInPictureSuspended || !_renderHandler) return;
+    _renderHandler((CAMetalLayer*)view.layer);
+}
+- (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {}
+- (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController*)controller
+{
+    _pipStarting = NO;
+    if (_activeHandler) _activeHandler(YES);
+    _pipView.paused = NO;
+    if (self.statusHandler) self.statusHandler(@"实时画中画已开启");
+}
+- (void)pictureInPictureControllerDidStopPictureInPicture:(AVPictureInPictureController*)controller
+{
+    _pipStarting = NO; _pipView.paused = YES;
+    if (_activeHandler) _activeHandler(NO);
+    if (self.statusHandler) self.statusHandler(@"画中画已关闭");
+}
+- (void)pictureInPictureController:(AVPictureInPictureController*)controller failedToStartPictureInPictureWithError:(NSError*)error
+{
+    _pipRequested = NO; _pipStarting = NO; _pipView.paused = YES;
+    if (_activeHandler) _activeHandler(NO);
+    if (self.statusHandler) self.statusHandler(error.localizedDescription);
+}
+- (void)pictureInPictureController:(AVPictureInPictureController*)controller restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL))completionHandler
+{ completionHandler(YES); }
+
+// Read back only for a requested PNG. Live PiP has no capture/copy pipeline.
 - (void)captureTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer
 {
-    if (!_exportRequested && _playbackPaused) return;
-    if (_invalidated || _capturePending || (!_exportRequested && !_pipRequested && !_pip.pictureInPictureActive)) return;
-    CFTimeInterval now = CACurrentMediaTime();
-    if (!_exportRequested && now - _lastCapture < 1.0 / 30) return;
-    _lastCapture = now;
-    // PiP needs far fewer pixels than a full-resolution PNG. Downscale on the
-    // GPU before readback to keep continuous capture bounded on 3x iPhones.
-    id<MTLTexture> source = texture;
-    id<MTLTexture> scaledTexture = nil;
-    if (!_exportRequested && MAX(texture.width, texture.height) > 960) {
-        double ratio = 960.0 / MAX(texture.width, texture.height);
-        MTLTextureDescriptor* desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:texture.pixelFormat
-            width:MAX(1, (NSUInteger)(texture.width * ratio)) height:MAX(1, (NSUInteger)(texture.height * ratio)) mipmapped:NO];
-        desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-        scaledTexture = [texture.device newTextureWithDescriptor:desc];
-        if (scaledTexture) {
-            MPSImageBilinearScale* scaler = [[MPSImageBilinearScale alloc] initWithDevice:texture.device];
-            [scaler encodeToCommandBuffer:commandBuffer sourceTexture:texture destinationTexture:scaledTexture];
-            [scaler release]; source = scaledTexture;
-        }
-    }
-    const NSUInteger width = source.width, height = source.height;
-    const NSUInteger rowBytes = (width * 4 + 255) & ~255;
+    if (_invalidated || _capturePending || !_exportRequested) return;
+    NSUInteger width = texture.width, height = texture.height, rowBytes = (width * 4 + 255) & ~255;
     id<MTLBuffer> pixels = [texture.device newBufferWithLength:rowBytes * height options:MTLResourceStorageModeShared];
-    if (!pixels) { [scaledTexture release]; return; }
+    if (!pixels) return;
     id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
-    [blit copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+    [blit copyFromTexture:texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
               sourceSize:MTLSizeMake(width, height, 1) toBuffer:pixels destinationOffset:0
      destinationBytesPerRow:rowBytes destinationBytesPerImage:rowBytes * height];
-    [blit endEncoding]; [scaledTexture release]; _capturePending = YES;
+    [blit endEncoding]; _capturePending = YES;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_capturePending = NO;
-            if (self->_invalidated || completed.status == MTLCommandBufferStatusError) return;
-            CVPixelBufferRef pixelBuffer = NULL;
-            NSDictionary* attributes = @{(id)kCVPixelBufferIOSurfacePropertiesKey: @{}};
-            if (CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
-                                   (CFDictionaryRef)attributes, &pixelBuffer) != kCVReturnSuccess) return;
-            CVPixelBufferLockBaseAddress(pixelBuffer, 0);
-            uint8_t* target = (uint8_t*)CVPixelBufferGetBaseAddress(pixelBuffer);
-            size_t targetStride = CVPixelBufferGetBytesPerRow(pixelBuffer);
-            for (NSUInteger y = 0; y < height; y++) memcpy(target + y * targetStride, (uint8_t*)pixels.contents + y * rowBytes, width * 4);
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
-            [self consumePixelBuffer:pixelBuffer];
-            CVPixelBufferRelease(pixelBuffer);
+            if (self->_invalidated) return;
+            self->_exportRequested = NO;
+            if (completed.status != MTLCommandBufferStatusError) {
+                NSData* data = [NSData dataWithBytes:pixels.contents length:rowBytes * height];
+                CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
+                CIImage* image = [CIImage imageWithBitmapData:data bytesPerRow:rowBytes size:CGSizeMake(width, height) format:kCIFormatBGRA8 colorSpace:color];
+                CGColorSpaceRelease(color);
+                CGImageRef cg = [self->_imageContext createCGImage:image fromRect:image.extent];
+                if (cg) {
+                    NSData* png = UIImagePNGRepresentation([UIImage imageWithCGImage:cg]); CGImageRelease(cg);
+                    NSURL* file = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Live2D-%@.png", NSUUID.UUID.UUIDString]]];
+                    if ([png writeToURL:file atomically:YES]) {
+                        UIActivityViewController* share = [[UIActivityViewController alloc] initWithActivityItems:@[file] applicationActivities:nil];
+                        share.popoverPresentationController.sourceView = self->_exportPresenter.view;
+                        share.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self->_exportPresenter.view.bounds), CGRectGetMidY(self->_exportPresenter.view.bounds), 1, 1);
+                        [self->_exportPresenter presentViewController:share animated:YES completion:nil]; [share release];
+                        if (self.statusHandler) self.statusHandler(@"PNG 已生成，可保存或分享");
+                    }
+                }
+            } else if (self.statusHandler) self.statusHandler(@"PNG 渲染失败，请重试");
+            [self->_exportPresenter release]; self->_exportPresenter = nil;
         });
     }];
     [pixels release];
 }
-- (void)consumePixelBuffer:(CVPixelBufferRef)buffer
-{
-    if (_exportRequested) {
-        _exportRequested = NO;
-        CIImage* image = [CIImage imageWithCVPixelBuffer:buffer];
-        CGImageRef cgImage = [_imageContext createCGImage:image fromRect:image.extent];
-        if (cgImage) {
-            NSData* png = UIImagePNGRepresentation([UIImage imageWithCGImage:cgImage]);
-            CGImageRelease(cgImage);
-            NSURL* file = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:
-                [NSString stringWithFormat:@"Live2D-%@.png", NSUUID.UUID.UUIDString]]];
-            if ([png writeToURL:file atomically:YES]) {
-                UIActivityViewController* share = [[UIActivityViewController alloc] initWithActivityItems:@[file] applicationActivities:nil];
-                share.popoverPresentationController.sourceView = _exportPresenter.view;
-                share.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(_exportPresenter.view.bounds), CGRectGetMidY(_exportPresenter.view.bounds), 1, 1);
-                [_exportPresenter presentViewController:share animated:YES completion:nil]; [share release];
-                if (self.statusHandler) self.statusHandler(@"PNG 已生成，可保存到文件或分享");
-            } else if (self.statusHandler) self.statusHandler(@"PNG 写入失败");
-        }
-        [_exportPresenter release]; _exportPresenter = nil;
-    }
-    if (_pipRequested || _pip.pictureInPictureActive) {
-        if (_displayLayer.status == AVQueuedSampleBufferRenderingStatusFailed) [_displayLayer flush];
-        CMVideoFormatDescriptionRef format = NULL; CMSampleBufferRef sample = NULL;
-        CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, buffer, &format);
-        CMSampleTimingInfo timing = {CMTimeMake(1, 30), CMTimeMakeWithSeconds(CACurrentMediaTime(), 1000000000), kCMTimeInvalid};
-        if (format) CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, buffer, format, &timing, &sample);
-        if (sample) {
-            CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sample, YES);
-            CFDictionarySetValue((CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0), kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
-            if (_displayLayer.readyForMoreMediaData) [_displayLayer enqueueSampleBuffer:sample];
-            CFRelease(sample);
-        }
-        if (format) CFRelease(format);
-        if (_pipRequested && _pip.pictureInPicturePossible) { _pipRequested = NO; [_pip startPictureInPicture]; }
-        else if (_pipRequested && CACurrentMediaTime() - _pipRequestTime > 8) {
-            _pipRequested = NO; if (self.statusHandler) self.statusHandler(@"系统尚未允许画中画，请保持应用前台再试");
-        }
-    }
-}
-- (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController*)controller
-{ if (self.statusHandler) self.statusHandler(@"画中画已开启 · 后台保留最后一帧"); }
-- (void)pictureInPictureControllerDidStopPictureInPicture:(AVPictureInPictureController*)controller
-{ [_displayLayer flushAndRemoveImage]; if (self.statusHandler) self.statusHandler(@"画中画已关闭"); }
-- (void)pictureInPictureController:(AVPictureInPictureController*)controller failedToStartPictureInPictureWithError:(NSError*)error
-{ _pipRequested = NO; if (self.statusHandler) self.statusHandler(error.localizedDescription); }
-- (void)pictureInPictureController:(AVPictureInPictureController*)controller restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL))completionHandler
-{ completionHandler(YES); }
-- (void)pictureInPictureController:(AVPictureInPictureController*)controller setPlaying:(BOOL)playing
-{ _playbackPaused = !playing; [_pip invalidatePlaybackState]; }
-- (CMTimeRange)pictureInPictureControllerTimeRangeForPlayback:(AVPictureInPictureController*)controller
-{ return CMTimeRangeMake(kCMTimeZero, kCMTimePositiveInfinity); }
-- (BOOL)pictureInPictureControllerIsPlaybackPaused:(AVPictureInPictureController*)controller { return _playbackPaused; }
-- (void)pictureInPictureController:(AVPictureInPictureController*)controller didTransitionToRenderSize:(CMVideoDimensions)size {}
-- (void)pictureInPictureController:(AVPictureInPictureController*)controller skipByInterval:(CMTime)interval completionHandler:(void (^)(void))completionHandler
-{ completionHandler(); }
 - (void)invalidate
 {
-    _invalidated = YES; _pipRequested = NO; [_pip stopPictureInPicture]; _pip.delegate = nil;
-    [_displayLayer removeFromSuperlayer]; self.statusHandler = nil;
-}
-- (void)studioEnteredBackground:(NSNotification*)notification
-{
-    // Keep the last enqueued sample visible. iOS prohibits new Metal work in
-    // the background; the user explicitly selected a frozen background PiP.
-    if (_pip.pictureInPictureActive && self.statusHandler)
-        self.statusHandler(@"画中画保留最后一帧 · 返回应用恢复实时模型");
-}
-- (void)studioBecameActive:(NSNotification*)notification
-{
-    if (_pip.pictureInPictureActive) {
-        _playbackPaused = NO; [_pip invalidatePlaybackState];
-        if (self.statusHandler) self.statusHandler(@"画中画已恢复实时模型");
-    }
+    if (_invalidated) return;
+    _invalidated = YES; _pipRequested = NO; _pipView.paused = YES; _pipView.delegate = nil;
+    if (_activeHandler) _activeHandler(NO);
+    if (_pip) [_pip removeObserver:self forKeyPath:@"pictureInPicturePossible" context:StudioPiPObservation];
+    _pip.delegate = nil; [_pip stopPictureInPicture]; _pip.contentSource = nil;
+    self.statusHandler = nil;
+    [_renderHandler release]; _renderHandler = nil;
+    [_activeHandler release]; _activeHandler = nil;
 }
 - (void)dealloc
 {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [self invalidate]; [_pip release]; [_displayLayer release]; [_exportPresenter release]; [_imageContext release]; [_statusHandler release]; [super dealloc];
+    [self invalidate]; [_pip release]; [_pipView release]; [_pipContent release]; [_device release];
+    [_exportPresenter release]; [_imageContext release]; [_statusHandler release]; [super dealloc];
 }
 @end
