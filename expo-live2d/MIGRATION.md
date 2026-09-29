@@ -32,6 +32,7 @@ Source of truth: `../src/App.tsx`, `../src/styles.css`, `../src/live2d.ts` (loca
 - All checklist features now have implementations in `App.tsx`, `studio.ts`, and the native Metal host. Checkboxes above remain acceptance gates, not claims of device testing.
 - UI-only browser QA at 430×932 and 1280×800 verified the dock, control sheet, sidebar and nine face controls. Corrected compact button sizing and slider zero positioning. This preview does not test native rendering.
 - Direction selection, filename fallback, face parameter mappings and labels pass four Node tests. TypeScript and Expo lint are required in CI before native compilation.
-- Native Expo build for `677808b` succeeded; subsequent lifecycle, slider and PiP changes require a fresh build.
+- Final native Expo build for `3919655` succeeded: https://github.com/fengluoxiao/iive2dview/actions/runs/36558031215 . Unsigned artifact: `live2d-expo-metal-unsigned-ipa` (11028307456).
+- Final UI interaction checks: dragging the face-angle slider changed 0 to 16, face reset returned it to 0, the mobile sheet closed correctly, and the wide layout had no horizontal overflow. Stage rotation now preserves zoom.
 - PiP stops new Metal submissions while inactive. It retains the last sample in the background and resumes captures when active; PiP captures are capped at 30 FPS and a 960-pixel longest edge, while PNG export keeps render resolution.
 - Device acceptance still required: model import/relaunch, all controls with a real model, PNG sharing, PiP start/background/foreground, and gesture regression. The latest user-verified baseline before the full Studio port is `68d8b8c` (Expo Run 32).
