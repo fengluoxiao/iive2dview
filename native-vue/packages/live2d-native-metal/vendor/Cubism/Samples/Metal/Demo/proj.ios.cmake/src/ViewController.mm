@@ -477,6 +477,11 @@ using namespace LAppDefine;
 
 - (void)drawableResize:(CGSize)size
 {
+    if (size.width <= 0 || size.height <= 0)
+    {
+        return;
+    }
+
     MTLTextureDescriptor* depthTextureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:size.width height:size.height mipmapped:false];
     depthTextureDescriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
     depthTextureDescriptor.storageMode = MTLStorageModePrivate;
@@ -509,10 +514,19 @@ using namespace LAppDefine;
 
 - (void)renderToMetalLayer:(nonnull CAMetalLayer *)layer
 {
+    if (layer == nil || layer.drawableSize.width <= 0 || layer.drawableSize.height <= 0 || _commandQueue == nil || _depthTexture == nil)
+    {
+        return;
+    }
+
     LAppPal::UpdateTime();
 
     id <MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
     id<CAMetalDrawable> currentDrawable = [layer nextDrawable];
+    if (commandBuffer == nil || currentDrawable == nil || currentDrawable.texture == nil)
+    {
+        return;
+    }
 
     MTLRenderPassDescriptor *renderPassDescriptor = [[[MTLRenderPassDescriptor alloc] init] autorelease];
     renderPassDescriptor.colorAttachments[0].texture = currentDrawable.texture;

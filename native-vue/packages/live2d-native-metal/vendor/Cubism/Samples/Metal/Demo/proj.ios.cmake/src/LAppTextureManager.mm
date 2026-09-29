@@ -123,12 +123,16 @@
                   withBytes:png
                 bytesPerRow:bytesPerRow];
 
-    id<CAMetalDrawable> drawable = [((MetalUIView*)viewController.view).metalLayer nextDrawable];
     id<MTLCommandBuffer> commandBuffer = [viewController.commandQueue commandBuffer];
+    if (commandBuffer == nil)
+    {
+        stbi_image_free(png);
+        LAppPal::ReleaseBytes(address);
+        return nil;
+    }
     id<MTLBlitCommandEncoder> blitCommandEncoder = [commandBuffer blitCommandEncoder];
     [blitCommandEncoder generateMipmapsForTexture:texture];
     [blitCommandEncoder endEncoding];
-    [commandBuffer presentDrawable:drawable];
     [commandBuffer commit];
 
     // 解放処理
