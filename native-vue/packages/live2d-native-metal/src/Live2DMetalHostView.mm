@@ -118,17 +118,18 @@ void InitializeCubismOnce()
         alertControllerWithTitle:@"Import Live2D model"
         message:@"Choose a model folder or a ZIP archive."
         preferredStyle:UIAlertControllerStyleActionSheet];
-    __weak typeof(self) weakSelf = self;
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import folder"
                                                      style:UIAlertActionStyleDefault
-                                                   handler:^(__unused UIAlertAction* action) {
-        [weakSelf presentModelPickerForContentTypes:@[UTType.folder]];
+                                                   handler:^(UIAlertAction* action) {
+        (void)action;
+        [self presentModelPickerForContentTypes:@[UTType.folder]];
     }]];
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import ZIP"
                                                      style:UIAlertActionStyleDefault
-                                                   handler:^(__unused UIAlertAction* action) {
+                                                   handler:^(UIAlertAction* action) {
+        (void)action;
         UTType* zipType = [UTType typeWithFilenameExtension:@"zip"];
-        [weakSelf presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
+        [self presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
     }]];
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                                      style:UIAlertActionStyleCancel
