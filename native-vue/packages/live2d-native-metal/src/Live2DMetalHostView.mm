@@ -203,11 +203,11 @@ void InitializeCubismOnce()
 
 - (void)presentFolderImporter
 {
-    // initForOpeningContentTypes asserts when passed public.folder. The
-    // legacy import picker is the UIKit path that accepts a folder UTI.
+    // Directories require open-in-place mode, not import/copy mode.
+    // Copy the selected directory ourselves while holding security access.
     UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
-        initWithDocumentTypes:@[@"public.folder"]
-        inMode:UIDocumentPickerModeImport];
+        initForOpeningContentTypes:@[UTTypeFolder]
+        asCopy:NO];
     picker.delegate = self;
     picker.modalPresentationStyle = UIModalPresentationFormSheet;
 
@@ -234,12 +234,30 @@ void InitializeCubismOnce()
     NSURL* destination = [modelsDirectory URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
     [fileManager createDirectoryAtURL:destination withIntermediateDirectories:YES attributes:nil error:nil];
 
-    BOOL imported = NO;
+    __block BOOL imported = NO;
     if ([selectedURL.pathExtension caseInsensitiveCompare:@"zip"] == NSOrderedSame) {
         imported = [SSZipArchive unzipFileAtPath:selectedURL.path toDestination:destination.path];
     } else {
-        NSURL* importedDirectory = [destination URLByAppendingPathComponent:selectedURL.lastPathComponent isDirectory:YES];
-        imported = [fileManager copyItemAtURL:selectedURL toURL:importedDirectory error:nil];
+        BOOL accessing = [selectedURL startAccessingSecurityScopedResource];
+        if (accessing) {
+            NSFileCoordinator* coordinator = [[NSFileCoordinator alloc] initWithFilePresenter:nil];
+            NSError* coordinationError = nil;
+            @try {
+                [coordinator coordinateReadingItemAtURL:selectedURL
+                                               options:0
+                                                 error:&coordinationError
+                                            byAccessor:^(NSURL* readableURL) {
+                    NSURL* importedDirectory = [destination URLByAppendingPathComponent:selectedURL.lastPathComponent isDirectory:YES];
+                    imported = [fileManager copyItemAtURL:readableURL toURL:importedDirectory error:nil];
+                }];
+                if (coordinationError != nil) {
+                    imported = NO;
+                }
+            } @finally {
+                [coordinator release];
+                [selectedURL stopAccessingSecurityScopedResource];
+            }
+        }
     }
     if (!imported) {
         [fileManager removeItemAtURL:destination error:nil];
@@ -251,13 +269,18 @@ void InitializeCubismOnce()
         [fileManager removeItemAtURL:destination error:nil];
         return;
     }
+    [_importDirectory release];
     _importDirectory = [destination retain];
     NSString* directory = [modelURL.path.stringByDeletingLastPathComponent stringByAppendingString:@"/"];
     LAppLive2DManager* manager = [LAppLive2DManager getInstance];
     [manager loadModelAtDirectory:directory.UTF8String fileName:modelURL.lastPathComponent.UTF8String];
-    for (NSString* parameterId in _parameterValues) {
-        [self setParameterValue:[[_parameterValues objectForKey:parameterId] floatValue] forId:parameterId];
+    // setParameterValue writes back to _parameterValues. Enumerate a snapshot
+    // so restoring controls cannot mutate the collection being enumerated.
+    NSDictionary<NSString*, NSNumber*>* savedParameters = [_parameterValues copy];
+    for (NSString* parameterId in savedParameters) {
+        [self setParameterValue:[[savedParameters objectForKey:parameterId] floatValue] forId:parameterId];
     }
+    [savedParameters release];
 }
 
 - (NSURL*)firstModelURLInDirectory:(NSURL*)directory
