@@ -67,6 +67,7 @@ void InitializeCubismOnce()
     Live2DFolderPicker* _studioFolderPicker;
     NSInteger _studioExpressionIndex;
     Live2DStudioMedia* _studioMedia;
+    BOOL _widgetCapturing;
 }
 
 - (void)didMoveToWindow
@@ -291,7 +292,12 @@ void InitializeCubismOnce()
     _studioModelId = [identifier copy];
     [_studioMetadata release];
     NSDictionary* refs = json[@"FileReferences"];
+    NSArray* eyeBlinkIds = @[];
+    for (NSDictionary* group in json[@"Groups"]) {
+        if ([group[@"Name"] isEqual:@"EyeBlink"] && [group[@"Ids"] isKindOfClass:NSArray.class]) eyeBlinkIds = group[@"Ids"];
+    }
     _studioMetadata = [@{@"motions": refs[@"Motions"] ?: @{}, @"expressions": refs[@"Expressions"] ?: @[],
+                        @"eyeBlinkIds": eyeBlinkIds,
                         @"drawables": @([manager getModel:0]->GetModel()->GetDrawableCount())} copy];
     [self studioConfigureIdle];
     [[NSUserDefaults standardUserDefaults] setObject:identifier forKey:@"studioLastModel"];
@@ -310,6 +316,7 @@ void InitializeCubismOnce()
 - (void)performStudioCommand:(NSDictionary*)command
 {
     NSString* type = command[@"type"];
+    if (_widgetCapturing) { [self studioEmitState]; return; }
     LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
     if (!_studioInitialized && UIApplication.sharedApplication.applicationState == UIApplicationStateActive && self.window && self.bounds.size.width > 0 && self.bounds.size.height > 0) {
         _studioInitialized = YES;
@@ -382,6 +389,8 @@ void InitializeCubismOnce()
         [_renderer setStudioQuality:command[@"value"]];
     } else if ([type isEqual:@"export"]) {
         [_studioMedia requestExportFrom:[self activePresenter]];
+    } else if ([type isEqual:@"widgetSave"]) {
+        [self saveWidgetFace];
     } else if ([type isEqual:@"pip"]) {
         [_studioMedia togglePictureInPicture];
     } else if ([type isEqual:@"reset"]) {
@@ -397,6 +406,72 @@ void InitializeCubismOnce()
         }
     }
     [self studioEmitState];
+}
+
+- (void)saveWidgetFace
+{
+    NSURL* container = [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:@"group.com.fengluo.live2dmetal"];
+    LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
+    if (!container) { [self studioSetStatus:@"小组件共享权限不可用：签名需包含 App Group 和 widget 扩展"]; return; }
+    if (!model || !_studioModelId) { [self studioSetStatus:@"请先打开模型"]; return; }
+    if ([[_studioMedia pictureInPictureDiagnostics][@"active"] boolValue]) {
+        [self studioSetStatus:@"请先关闭画中画，再保存小组件表情"]; return;
+    }
+    NSURL* root = [container URLByAppendingPathComponent:@"WidgetFaces" isDirectory:YES];
+    NSError* error = nil;
+    if (![NSFileManager.defaultManager createDirectoryAtURL:root withIntermediateDirectories:YES attributes:nil error:&error]) {
+        [self studioSetStatus:error.localizedDescription]; return;
+    }
+    NSURL* manifest = [root URLByAppendingPathComponent:@"faces.json"];
+    NSData* existing = [NSData dataWithContentsOfURL:manifest];
+    id parsed = existing ? [NSJSONSerialization JSONObjectWithData:existing options:0 error:nil] : nil;
+    NSMutableArray* faces = [parsed isKindOfClass:NSArray.class] ? [NSMutableArray arrayWithArray:parsed] : [NSMutableArray array];
+    if (faces.count >= 12) { [self studioSetStatus:@"试验版最多保存 12 个表情"]; return; }
+    NSDictionary* saved = [[_parameterValues copy] autorelease];
+    NSArray* eyes = @[@"ParamEyeLOpen", @"ParamEyeROpen"];
+    // Use model-declared eye IDs when present, including nonstandard models.
+    NSArray* declared = _studioMetadata[@"eyeBlinkIds"];
+    if (declared.count) eyes = declared;
+    NSString* identifier = NSUUID.UUID.UUIDString;
+    NSString* openName = [identifier stringByAppendingString:@"-open.png"];
+    NSString* closedName = [identifier stringByAppendingString:@"-closed.png"];
+    NSString* title = [NSString stringWithFormat:@"表情 %lu", (unsigned long)faces.count + 1];
+    _widgetCapturing = YES;
+    void (^restore)(void) = ^{
+        LAppModel* current = [[LAppLive2DManager getInstance] getModel:0];
+        if (current) {
+            current->ClearExternalParameters();
+            for (NSString* key in saved) current->SetExternalParameterValue(CubismFramework::GetIdManager()->GetId(key.UTF8String), [saved[key] floatValue]);
+        }
+        self->_widgetCapturing = NO;
+    };
+    for (NSString* eye in eyes) model->SetExternalParameterValue(CubismFramework::GetIdManager()->GetId(eye.UTF8String), 1);
+    BOOL started = [_studioMedia requestWidgetSnapshot:^(NSData* openPNG) {
+        if (!openPNG) { restore(); [self studioSetStatus:@"小组件截图超时或失败，请保持应用前台重试"]; [self studioEmitState]; return; }
+        LAppModel* current = [[LAppLive2DManager getInstance] getModel:0];
+        if (!current) { restore(); return; }
+        for (NSString* eye in eyes) current->SetExternalParameterValue(CubismFramework::GetIdManager()->GetId(eye.UTF8String), 0);
+        BOOL closing = [self->_studioMedia requestWidgetSnapshot:^(NSData* closedPNG) {
+            restore();
+            NSError* writeError = nil;
+            BOOL written = closedPNG && [openPNG writeToURL:[root URLByAppendingPathComponent:openName] options:NSDataWritingAtomic error:&writeError]
+                && [closedPNG writeToURL:[root URLByAppendingPathComponent:closedName] options:NSDataWritingAtomic error:&writeError];
+            if (written) {
+                [faces addObject:@{@"id": identifier, @"title": title, @"open": openName, @"closed": closedName}];
+                NSData* json = [NSJSONSerialization dataWithJSONObject:faces options:0 error:&writeError];
+                written = [json writeToURL:manifest options:NSDataWritingAtomic error:&writeError];
+            }
+            if (written) {
+                Class reloader = NSClassFromString(@"Live2DWidgetReloader");
+                if ([reloader respondsToSelector:@selector(reload)]) [reloader performSelector:@selector(reload)];
+                [self studioSetStatus:[NSString stringWithFormat:@"已保存 %@；桌面添加「Live2D 表情」小组件", title]];
+            } else [self studioSetStatus:writeError.localizedDescription ?: @"小组件闭眼截图失败，请重试"];
+            [self studioEmitState];
+        }];
+        if (!closing) { restore(); [self studioSetStatus:@"截图忙，请重试"]; [self studioEmitState]; }
+    }];
+    if (!started) { restore(); [self studioSetStatus:@"截图忙，请稍后重试"]; }
+    else [self studioSetStatus:@"正在保存小组件的睁眼和闭眼画面…"];
 }
 
 - (void)presentModelImporter

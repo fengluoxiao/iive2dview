@@ -16,6 +16,8 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
     UIViewController* _exportPresenter;
     BOOL _exportRequested;
     BOOL _capturePending;
+    void (^_widgetSnapshot)(NSData*);
+    NSUInteger _snapshotGeneration;
     BOOL _invalidated;
     BOOL _pipRequested;
     BOOL _pipStarting;
@@ -49,8 +51,22 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
 }
 - (void)requestExportFrom:(UIViewController*)presenter
 {
-    if (!presenter) return;
+    if (!presenter || _widgetSnapshot) return;
     [_exportPresenter release]; _exportPresenter = [presenter retain]; _exportRequested = YES;
+}
+- (BOOL)requestWidgetSnapshot:(void (^)(NSData*))completion
+{
+    if (_invalidated || _capturePending || _exportRequested || _widgetSnapshot) return NO;
+    _widgetSnapshot = [completion copy];
+    NSUInteger generation = ++_snapshotGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (self->_widgetSnapshot && generation == self->_snapshotGeneration) {
+            void (^callback)(NSData*) = [self->_widgetSnapshot copy];
+            [self->_widgetSnapshot release]; self->_widgetSnapshot = nil;
+            callback(nil); [callback release];
+        }
+    });
+    return YES;
 }
 - (void)togglePictureInPicture
 {
@@ -198,7 +214,9 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
 // Read back only for a requested PNG. Live PiP has no capture/copy pipeline.
 - (void)captureTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer
 {
-    if (_invalidated || _capturePending || !_exportRequested) return;
+    if (_invalidated || _capturePending || (!_exportRequested && !_widgetSnapshot)) return;
+    const BOOL widgetCapture = _widgetSnapshot != nil;
+    const NSUInteger generation = _snapshotGeneration;
     NSUInteger width = texture.width, height = texture.height, rowBytes = (width * 4 + 255) & ~255;
     id<MTLBuffer> pixels = [texture.device newBufferWithLength:rowBytes * height options:MTLResourceStorageModeShared];
     if (!pixels) return;
@@ -211,6 +229,9 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_capturePending = NO;
             if (self->_invalidated) return;
+            if (widgetCapture && generation != self->_snapshotGeneration) return;
+            if (widgetCapture && !self->_widgetSnapshot) return;
+            NSData* snapshot = nil;
             self->_exportRequested = NO;
             if (completed.status != MTLCommandBufferStatusError) {
                 NSData* data = [NSData dataWithBytes:pixels.contents length:rowBytes * height];
@@ -219,7 +240,20 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
                 CGColorSpaceRelease(color);
                 CGImageRef cg = [self->_imageContext createCGImage:image fromRect:image.extent];
                 if (cg) {
-                    NSData* png = UIImagePNGRepresentation([UIImage imageWithCGImage:cg]); CGImageRelease(cg);
+                    UIImage* captured = [UIImage imageWithCGImage:cg];
+                    if (widgetCapture) {
+                        CGFloat scale = MIN(1.0, 600.0 / MAX(width, height));
+                        UIGraphicsImageRendererFormat* format = [UIGraphicsImageRendererFormat defaultFormat];
+                        format.scale = 1; format.opaque = NO;
+                        UIGraphicsImageRenderer* renderer = [[[UIGraphicsImageRenderer alloc]
+                            initWithSize:CGSizeMake(width * scale, height * scale) format:format] autorelease];
+                        captured = [renderer imageWithActions:^(UIGraphicsImageRendererContext* context) {
+                            [captured drawInRect:CGRectMake(0, 0, width * scale, height * scale)];
+                        }];
+                    }
+                    NSData* png = UIImagePNGRepresentation(captured); CGImageRelease(cg);
+                    if (widgetCapture) snapshot = png;
+                    else {
                     NSURL* file = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Live2D-%@.png", NSUUID.UUID.UUIDString]]];
                     if ([png writeToURL:file atomically:YES]) {
                         UIActivityViewController* share = [[UIActivityViewController alloc] initWithActivityItems:@[file] applicationActivities:nil];
@@ -228,9 +262,15 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
                         [self->_exportPresenter presentViewController:share animated:YES completion:nil]; [share release];
                         if (self.statusHandler) self.statusHandler(@"PNG 已生成，可保存或分享");
                     }
+                    }
                 }
             } else if (self.statusHandler) self.statusHandler(@"PNG 渲染失败，请重试");
             [self->_exportPresenter release]; self->_exportPresenter = nil;
+            if (widgetCapture && self->_widgetSnapshot) {
+                void (^callback)(NSData*) = [self->_widgetSnapshot copy];
+                [self->_widgetSnapshot release]; self->_widgetSnapshot = nil;
+                callback(snapshot); [callback release];
+            }
         });
     }];
     [pixels release];
@@ -239,6 +279,7 @@ static void* StudioPiPSuspensionObservation = &StudioPiPSuspensionObservation;
 {
     if (_invalidated) return;
     _invalidated = YES; _pipRequested = NO; _pipView.paused = YES; _pipView.delegate = nil;
+    [_widgetSnapshot release]; _widgetSnapshot = nil;
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [_pipTimer invalidate]; [_pipTimer release]; _pipTimer = nil;
     if (_activeHandler) _activeHandler(NO);

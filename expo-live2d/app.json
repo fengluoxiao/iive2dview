@@ -7,6 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
+      "buildNumber": "2",
       "supportsTablet": true,
       "bundleIdentifier": "com.fengluo.live2dmetal",
       "deploymentTarget": "18.0",
@@ -26,6 +27,7 @@
     "plugins": [
       "./plugins/withLive2DMetalIos",
       "./plugins/withModelsDocuments",
+      "./plugins/withLive2DWidget",
       [
         "expo-build-properties",
         {

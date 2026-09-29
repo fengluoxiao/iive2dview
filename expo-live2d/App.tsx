@@ -73,6 +73,10 @@ function Studio() {
       <Text style={[s.segmentText, tab === id && s.activeText]}>{['模型', '视图', '动作', '表情', '五官'][i]}</Text>
     </Pressable>)}</View>;
   const controls = <>
+    {tab === 'expression' && <View style={s.section}>
+      <Action label="保存当前表情到小组件" disabled={!selected} onPress={() => send({ type: 'widgetSave' })} />
+      <Text style={s.empty}>选好表情和构图后保存（最多 12 个）。桌面添加「Live2D 表情」，可直接切换已保存画面。3 秒眨眼为一分钟试验，系统可能跳过短帧。</Text>
+    </View>}
     {tab === 'model' && <View style={s.section}><Text style={s.sectionLabel}>模型</Text>
       <View style={s.modelCard}><View style={s.modelMark}><Text style={s.markText}>{displayName(selected?.character ?? 'L').slice(0, 1)}</Text></View><View style={{ flex: 1 }}><Text style={s.modelName}>{displayName(selected?.character ?? '导入模型')}</Text><Text style={s.modelOutfit}>{displayName(selected?.outfit ?? '文件夹 / ZIP')}</Text></View><View style={s.dot} /></View>
       <View style={s.row}><Action label={displayName(selected?.character ?? '选择角色')} onPress={() => setPicker(picker === 'character' ? null : 'character')} /><Action label={displayName(selected?.outfit ?? '选择服装')} onPress={() => setPicker(picker === 'outfit' ? null : 'outfit')} /></View>

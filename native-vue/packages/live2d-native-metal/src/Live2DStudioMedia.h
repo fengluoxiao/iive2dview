@@ -9,6 +9,7 @@
              renderHandler:(BOOL (^)(MTKView*))renderHandler
              activeHandler:(void (^)(BOOL))activeHandler;
 - (void)requestExportFrom:(UIViewController*)presenter;
+- (BOOL)requestWidgetSnapshot:(void (^)(NSData* png))completion;
 - (void)togglePictureInPicture;
 - (NSDictionary*)pictureInPictureDiagnostics;
 - (void)captureTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer;
