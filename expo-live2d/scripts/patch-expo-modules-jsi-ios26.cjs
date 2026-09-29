@@ -79,8 +79,22 @@ for (const [filePath, originalDeclaration, patchedDeclaration] of uncheckedSenda
   }
 }
 
+const packageManifest = path.join(path.dirname(packageRoot), 'Package.swift');
+const manifestSource = fs.readFileSync(packageManifest, 'utf8');
+const patchedManifest = manifestSource.replace(
+  'swiftLanguageModes: [.v6],',
+  'swiftLanguageModes: [.v5],',
+);
+if (patchedManifest === manifestSource && !manifestSource.includes('swiftLanguageModes: [.v5],')) {
+  throw new Error('Unable to apply the Swift language-mode compatibility patch');
+}
+if (patchedManifest !== manifestSource) {
+  fs.writeFileSync(packageManifest, patchedManifest);
+}
+
 console.log(
   `[iOS 26 compatibility] ExpoModulesJSI patched: ${swiftFilesUpdated} Swift files, ` +
     `${patchedScheduler === schedulerSource ? 0 : 1} C++ header, ` +
-    `${sendableTypesUpdated} Sendable declarations.`,
+    `${sendableTypesUpdated} Sendable declarations, ` +
+    `${patchedManifest === manifestSource ? 0 : 1} Swift package manifest.`,
 );
