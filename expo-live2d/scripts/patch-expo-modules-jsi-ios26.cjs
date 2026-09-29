@@ -40,6 +40,31 @@ for (const filePath of walk(packageRoot).filter((file) => file.endsWith('.swift'
   }
 }
 
+const uncheckedSendableTypes = [
+  [
+    path.join(packageRoot, 'ExpoModulesJSI', 'Runtime', 'JavaScriptPropNameID.swift'),
+    'public final class JavaScriptPropNameID: JavaScriptType {',
+    'public final class JavaScriptPropNameID: JavaScriptType, @unchecked Sendable {',
+  ],
+  [
+    path.join(packageRoot, 'ExpoModulesJSI', 'Runtime', 'Values', 'JavaScriptError.swift'),
+    'public final class JavaScriptError: Error, Sendable {',
+    'public final class JavaScriptError: Error, @unchecked Sendable {',
+  ],
+  [
+    path.join(packageRoot, 'ExpoModulesJSI', 'Runtime', 'Values', 'JavaScriptValue.swift'),
+    'public final class JavaScriptValue: JavaScriptType, Equatable, Escapable {',
+    'public final class JavaScriptValue: JavaScriptType, Equatable, Escapable, @unchecked Sendable {',
+  ],
+];
+
+let sendableTypesPatched = 0;
+for (const [filePath, originalDeclaration, patchedDeclaration] of uncheckedSendableTypes) {
+  if (replaceRequired(filePath, originalDeclaration, patchedDeclaration, 'Swift Sendable patch')) {
+    sendableTypesPatched += 1;
+  }
+}
+
 const schedulerHeader = path.join(
   packageRoot,
   'ExpoModulesJSI-Cxx',
@@ -99,6 +124,7 @@ if (!fs.readFileSync(promiseFile, 'utf8').includes('nonisolated init() {}')) {
 console.log(
   `[iOS 26 compatibility] ExpoModulesJSI patched: ` +
     `${weakReferencesPatched} weak references, ` +
+    `${sendableTypesPatched} Sendable declarations, ` +
     `${patchedScheduler === schedulerSource ? 0 : 1} header, ` +
     `${regexPatched ? 1 : 0} regex, ` +
     `${promisePatched ? 1 : 0} initializer.`,
