@@ -116,7 +116,7 @@ const promiseFile = path.join(
 );
 const promiseSource = fs.readFileSync(promiseFile, 'utf8');
 const patchedPromise = promiseSource.replace(
-  '  @JavaScriptActor\n  private final class LongLivedState',
+  /\s*@JavaScriptActor\r?\n\s*private final class LongLivedState/,
   '  private final class LongLivedState',
 );
 if (patchedPromise === promiseSource && !promiseSource.includes('  private final class LongLivedState')) {
