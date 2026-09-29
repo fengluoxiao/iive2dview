@@ -1,5 +1,36 @@
 #import "Live2DModelLibrary.h"
 
+NSArray<NSDictionary*>* Live2DScanModels(NSURL* root, NSString* prefix, BOOL legacy, NSError** error)
+{
+    NSMutableArray* result = [NSMutableArray array];
+    NSFileManager* fm = NSFileManager.defaultManager;
+    if (![fm fileExistsAtPath:root.path]) return result;
+    NSDirectoryEnumerator* files = [fm enumeratorAtURL:root
+        includingPropertiesForKeys:@[NSURLIsRegularFileKey, NSURLIsSymbolicLinkKey]
+        options:NSDirectoryEnumerationSkipsHiddenFiles errorHandler:^BOOL(NSURL* url, NSError* failure) {
+            if (error && !*error) *error = failure;
+            return YES;
+        }];
+    for (NSURL* url in files) {
+        NSNumber* link = nil; [url getResourceValue:&link forKey:NSURLIsSymbolicLinkKey error:nil];
+        if (link.boolValue) { [files skipDescendants]; continue; }
+        if (![url.lastPathComponent.lowercaseString hasSuffix:@".model3.json"]) continue;
+        NSNumber* regular = nil; [url getResourceValue:&regular forKey:NSURLIsRegularFileKey error:nil];
+        NSString* relative = Live2DModelIdentifier(root, url);
+        if (!regular.boolValue || !relative) continue;
+        NSArray* parts = relative.pathComponents;
+        NSString* outfit = [url.lastPathComponent substringToIndex:url.lastPathComponent.length - 12];
+        // Imported archives have a UUID wrapper; manually placed folders do not.
+        BOOL wrapped = legacy || (parts.count > 1 && [parts[0] rangeOfString:@"^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
+            options:NSRegularExpressionSearch].location != NSNotFound);
+        NSUInteger index = wrapped ? 1 : 0;
+        NSString* character = parts.count > index + 1 ? parts[index] : outfit;
+        [result addObject:@{@"id": [prefix stringByAppendingString:relative], @"character": character,
+                            @"outfit": outfit, @"url": url}];
+    }
+    return result;
+}
+
 NSString* Live2DModelIdentifier(NSURL* root, NSURL* file)
 {
     NSArray* base = root.URLByResolvingSymlinksInPath.URLByStandardizingPath.pathComponents;

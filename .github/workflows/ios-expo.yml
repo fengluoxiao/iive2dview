@@ -48,7 +48,7 @@ jobs:
         run: |
           npx tsc --noEmit
           npx expo lint
-          node --experimental-strip-types --test tests/studio.test.mjs
+          node --experimental-strip-types --test tests/*.test.mjs
       - name: Generate the Expo iOS project
         run: npx expo prebuild --platform ios --clean --no-install
       - name: Compile Cubism Metal shaders for iPhone
@@ -100,6 +100,7 @@ jobs:
           expected_bundle_id="$(node -p "require('./app.json').expo.ios.bundleIdentifier")"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = "$expected_bundle_id"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$app/Info.plist")" = true
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$app/Info.plist")" = true
           mkdir -p artifacts/Payload
           cp -R "$app" artifacts/Payload/
           (cd artifacts && zip -qry live2d-expo-metal-unsigned.ipa Payload)

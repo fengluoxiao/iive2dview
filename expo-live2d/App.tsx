@@ -1,11 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Slider from '@react-native-community/slider';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, requireNativeComponent, useWindowDimensions, type NativeSyntheticEvent, type ViewProps } from 'react-native';
+import { AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View, requireNativeComponent, useWindowDimensions, type NativeSyntheticEvent, type ViewProps } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, Path, Pattern, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { defaultFace, directionIndex, displayName, emptyState, faceControls, motionLabels, type Direction, type StudioState } from './studio';
 import { styles as s } from './studioStyles';
+import AndroidModelsLibrary from './AndroidModelsLibrary';
 
 type Command = { type: string; [key: string]: unknown };
 type NativeProps = ViewProps & { studioCommand: Command; onStudioEvent: (event: NativeSyntheticEvent<StudioState>) => void };
@@ -35,7 +36,7 @@ function Range({ label, value, min, max, onChange, suffix = '' }: { label: strin
   const update = (fraction: number) => onChange(Math.max(min, Math.min(max, Number((Math.round((min + fraction * (max - min)) / step) * step).toFixed(2)))));
   return <View style={s.range}><Text style={s.rangeLabel}>{label}</Text><Slider accessibilityLabel={label} style={s.slider} value={position} minimumValue={0} maximumValue={1} step={step / (max - min)} onValueChange={update} minimumTrackTintColor="#e77a91" maximumTrackTintColor="#38445c" thumbTintColor="#f09aab" /><Text style={s.rangeValue}>{value.toFixed(max > 3 ? 0 : 2)}{suffix}</Text></View>;
 }
-export default function App() { return <SafeAreaProvider><Studio /></SafeAreaProvider>; }
+export default function App() { return <SafeAreaProvider>{Platform.OS === 'android' ? <AndroidModelsLibrary /> : <Studio />}</SafeAreaProvider>; }
 function Studio() {
   const { width, height } = useWindowDimensions(); const insets = useSafeAreaInsets(); const wide = width > 760;
   const [state, setState] = useState(emptyState);
@@ -50,6 +51,10 @@ function Studio() {
   const live = useRef({ state, groups });
   useEffect(() => { live.current = { state, groups }; }, [state, groups]);
   useEffect(() => { const timer = setInterval(() => send({ type: 'state' }), 500); return () => clearInterval(timer); }, [send]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', next => { if (next === 'active') send({ type: 'refreshModels' }); });
+    return () => subscription.remove();
+  }, [send]);
   useEffect(() => {
     if (!autoplay) return; let cursor = 0;
     const timer = setInterval(() => { const current = live.current; const entry = current.groups[cursor++ % current.groups.length];
@@ -69,6 +74,8 @@ function Studio() {
       <View style={s.row}><Action label={displayName(selected?.character ?? '选择角色')} onPress={() => setPicker(picker === 'character' ? null : 'character')} /><Action label={displayName(selected?.outfit ?? '选择服装')} onPress={() => setPicker(picker === 'outfit' ? null : 'outfit')} /></View>
       {picker && <View style={s.selectionList}>{state.models.filter((m, i, all) => picker === 'character' ? all.findIndex(a => a.character === m.character) === i : m.character === selected?.character).map(m => <Action key={m.id} label={displayName(picker === 'character' ? m.character : m.outfit)} selected={m.id === selected?.id} onPress={() => { send({ type: 'selectModel', id: m.id }); setPicker(null); }} />)}</View>}
       <View style={s.row}><Action label="导入文件夹" onPress={() => { setPanel(false); send({ type: 'importFolder' }); }} /><Action label="导入 ZIP" onPress={() => { setPanel(false); send({ type: 'importZip' }); }} /></View>
+      <View style={s.row}><Action label="刷新模型" onPress={() => send({ type: 'refreshModels' })} /></View>
+      <Text selectable style={s.empty}>文件 → 我的 iPhone / iPad → Live2D Metal → models。把完整模型文件夹放入，返回后自动扫描。ZIP 请先解压或使用导入 ZIP。</Text>
     </View>
     <View style={s.section}><Text style={s.sectionLabel}>视图</Text><Range label="缩放" min={0.45} max={2.4} value={state.view.scale} suffix="x" onChange={value => send({ type: 'scale', value })} />
       <View style={s.row}><Action compact icon="mirror" label="水平镜像" selected={state.view.mirrored} onPress={() => send({ type: 'mirror', value: !state.view.mirrored })} /><Action compact icon="fit" label="复位位置，保留缩放" onPress={reset} /><Action compact icon="export" label="导出 PNG" onPress={() => send({ type: 'export' })} /></View>

@@ -7,7 +7,7 @@ export type StudioState = {
   view: { scale: number; mirrored: boolean; fps: number; updateMs: number; pixelWidth: number; pixelHeight: number; gpu: string };
 };
 export const emptyState: StudioState = {
-  models: [], selectedModelId: '', status: '导入文件夹或 ZIP，开始预览', direction: 'C', blink: true, expressionIndex: -1, metadata: {},
+  models: [], selectedModelId: '', status: '将模型放入 models 文件夹后刷新，或导入 ZIP', direction: 'C', blink: true, expressionIndex: -1, metadata: {},
   view: { scale: 1, mirrored: false, fps: 0, updateMs: 0, pixelWidth: 0, pixelHeight: 0, gpu: 'Metal' },
 };
 export const faceControls = [

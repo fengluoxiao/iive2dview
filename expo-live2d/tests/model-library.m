@@ -34,6 +34,25 @@ int main(void) {
         [@"{}" writeToURL:file atomically:YES encoding:NSUTF8StringEncoding error:nil];
         error = nil;
         require(Live2DReadModelConfiguration(file, &error) == nil && [error.domain isEqual:@"Live2DModelLibrary"], @"Missing schema reports configuration error");
+        error = nil;
+        NSArray* direct = Live2DScanModels(root, @"models/", NO, &error);
+        require(direct.count == 1 && error == nil, @"Recursive models scan");
+        require([direct[0][@"id"] isEqual:[@"models/" stringByAppendingString:identifier]], @"Stable document namespace");
+        require([direct[0][@"character"] isEqual:@"A123"], @"Manual folder name is character");
+        NSArray* old = Live2DScanModels(root, @"", YES, &error);
+        require([old[0][@"id"] isEqual:identifier] && [old[0][@"character"] isEqual:@"祥子 夏服"], @"Legacy IDs and grouping preserved");
+        NSURL* outside = [root URLByAppendingPathComponent:@"outside"];
+        require([fm createSymbolicLinkAtURL:outside withDestinationURL:temporary error:&error], @"Create external link");
+        require(Live2DScanModels(root, @"models/", NO, &error).count == 1, @"Do not traverse external symlinks");
+        NSURL* wrapper = [root URLByAppendingPathComponent:@"12345678-1234-1234-1234-123456789abc/sakiko/casual/test.MODEL3.JSON"];
+        [fm createDirectoryAtURL:wrapper.URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+        [@"{}" writeToURL:wrapper atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        NSArray* imported = Live2DScanModels(root, @"models/", NO, &error);
+        require(imported.count == 2, @"Case insensitive model extension");
+        for (NSDictionary* item in imported) if ([item[@"outfit"] isEqual:@"test"])
+            require([item[@"character"] isEqual:@"sakiko"], @"Hide import UUID in character label");
+        [fm removeItemAtURL:file error:nil];
+        require(Live2DScanModels(root, @"models/", NO, &error).count == 1, @"Refresh reflects removal");
         [fm removeItemAtURL:alias error:nil];
         [fm removeItemAtURL:root error:nil];
         NSLog(@"PASS: model library path round-trip, Unicode, aliases, and error diagnostics");

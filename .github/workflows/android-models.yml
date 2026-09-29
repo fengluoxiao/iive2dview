@@ -1,0 +1,46 @@
+name: Android model directory
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'expo-live2d/**'
+      - '.github/workflows/android-models.yml'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: expo-live2d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: expo-live2d/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install and validate
+        run: |
+          npm install --global npm@11.6.2
+          npm ci
+          npx tsc --noEmit
+          npx expo lint
+          node --experimental-strip-types --test tests/*.test.mjs
+          mkdir -p "$RUNNER_TEMP/models-tests"
+          javac -d "$RUNNER_TEMP/models-tests" android-models/ModelsStorage.java tests/ModelsStorageTest.java
+          java -cp "$RUNNER_TEMP/models-tests" ModelsStorageTest
+      - name: Generate and build Android model manager
+        run: |
+          npx expo prebuild --platform android --clean --no-install
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live2d-android-model-manager
+          path: expo-live2d/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

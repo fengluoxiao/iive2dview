@@ -117,7 +117,7 @@ void InitializeCubismOnce()
         _studioMedia.statusHandler = ^(NSString* message) { [host studioSetStatus:message]; [host studioEmitState]; };
         _parameterValues = [[NSMutableDictionary alloc] init];
         _studioDirection = [@"C" copy];
-        _studioStatus = [@"导入文件夹或 ZIP，开始预览" copy];
+        _studioStatus = [@"将模型放入 models 文件夹后刷新，或导入 ZIP" copy];
         _studioBlink = YES;
         _studioExpressionIndex = -1;
         _pinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinch:)];
@@ -200,8 +200,12 @@ void InitializeCubismOnce()
 
 - (NSURL*)studioLibraryURL
 {
-    return [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
-            URLByAppendingPathComponent:@"Live2DModels" isDirectory:YES];
+    NSURL* root = [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject
+            URLByAppendingPathComponent:@"models" isDirectory:YES];
+    NSError* error = nil;
+    if (![NSFileManager.defaultManager createDirectoryAtURL:root withIntermediateDirectories:YES attributes:nil error:&error])
+        [self studioSetStatus:[NSString stringWithFormat:@"无法创建 models：%@", error.localizedDescription]];
+    return root;
 }
 
 - (void)studioSetStatus:(NSString*)message
@@ -210,33 +214,28 @@ void InitializeCubismOnce()
     _studioStatus = [message copy];
 }
 
-- (void)studioScanLibrary
+- (BOOL)studioScanLibrary
 {
     NSURL* root = [self studioLibraryURL];
     NSMutableArray* catalog = [NSMutableArray array];
     NSMutableDictionary* modelURLs = [NSMutableDictionary dictionary];
-    NSDirectoryEnumerator* files = [[NSFileManager defaultManager] enumeratorAtURL:root includingPropertiesForKeys:nil
-        options:NSDirectoryEnumerationSkipsHiddenFiles errorHandler:nil];
-    for (NSURL* url in files) {
-        if (![url.lastPathComponent.lowercaseString hasSuffix:@".model3.json"]) continue;
-        NSString* relative = Live2DModelIdentifier(root, url);
-        if (!relative) continue;
-        NSNumber* regular = nil;
-        [url getResourceValue:&regular forKey:NSURLIsRegularFileKey error:nil];
-        if (!regular.boolValue) continue;
-        modelURLs[relative] = url;
-        NSArray* parts = relative.pathComponents;
-        NSString* outfit = [url.lastPathComponent substringToIndex:url.lastPathComponent.length - 12];
-        // The first component is our import UUID, never expose it as a name.
-        NSString* character = parts.count > 2 ? parts[1] : outfit;
-        [catalog addObject:@{@"id": relative, @"character": character, @"outfit": outfit}];
+    NSURL* legacy = [[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
+        URLByAppendingPathComponent:@"Live2DModels" isDirectory:YES];
+    NSError* scanError = nil;
+    NSMutableArray* entries = [NSMutableArray arrayWithArray:Live2DScanModels(root, @"models/", NO, &scanError)];
+    [entries addObjectsFromArray:Live2DScanModels(legacy, @"", YES, &scanError)];
+    for (NSDictionary* entry in entries) {
+        modelURLs[entry[@"id"]] = entry[@"url"];
+        [catalog addObject:@{@"id": entry[@"id"], @"character": entry[@"character"], @"outfit": entry[@"outfit"]}];
     }
+    if (scanError) [self studioSetStatus:[NSString stringWithFormat:@"部分模型目录无法读取：%@", scanError.localizedDescription]];
     [_studioCatalog release];
     [_studioModelURLs release];
     _studioModelURLs = [modelURLs copy];
     _studioCatalog = [[catalog sortedArrayUsingComparator:^NSComparisonResult(NSDictionary* a, NSDictionary* b) {
         return [a[@"id"] localizedStandardCompare:b[@"id"]];
     }] copy];
+    return scanError == nil;
 }
 
 - (void)studioConfigureIdle
@@ -326,7 +325,21 @@ void InitializeCubismOnce()
         [_studioPendingModelId release]; _studioPendingModelId = nil;
         model = [[LAppLive2DManager getInstance] getModel:0];
     }
-    if ([type isEqual:@"importFolder"] || [type isEqual:@"importZip"]) {
+    if ([type isEqual:@"refreshModels"]) {
+        if (_studioImporting) {
+            [self studioSetStatus:@"正在导入，请复制完成后刷新"];
+        } else {
+            BOOL complete = [self studioScanLibrary];
+            if (_studioModelId && !_studioModelURLs[_studioModelId]) {
+                [[LAppLive2DManager getInstance] releaseAllModel];
+                [_studioModelId release]; _studioModelId = nil;
+                [_studioMetadata release]; _studioMetadata = nil;
+                _studioExpressionIndex = -1;
+            }
+            if (!_studioModelId && _studioCatalog.count) [self studioLoadModel:_studioCatalog[0][@"id"]];
+            else if (complete) [self studioSetStatus:[NSString stringWithFormat:@"已找到 %lu 个模型；新文件复制完整后可再次刷新", (unsigned long)_studioCatalog.count]];
+        }
+    } else if ([type isEqual:@"importFolder"] || [type isEqual:@"importZip"]) {
         if (_studioImporting) {
             [self studioSetStatus:@"模型正在导入，请等待当前复制完成"];
         } else if ([type isEqual:@"importFolder"]) {
@@ -542,7 +555,7 @@ void InitializeCubismOnce()
                 self->_importDirectory = [destination retain];
                 [self studioSetStatus:@"复制完成，正在加载模型…"]; [self studioEmitState];
                 [self studioScanLibrary];
-                NSString* identifier = Live2DModelIdentifier(library, modelURL);
+                NSString* identifier = [@"models/" stringByAppendingString:Live2DModelIdentifier(library, modelURL)];
                 if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) {
                     [self studioLoadModel:identifier];
                 } else {

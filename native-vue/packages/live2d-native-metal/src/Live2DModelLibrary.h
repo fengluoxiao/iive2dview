@@ -4,3 +4,4 @@
 // must not change the relative identifier or trim its first character.
 FOUNDATION_EXPORT NSString* Live2DModelIdentifier(NSURL* root, NSURL* file);
 FOUNDATION_EXPORT NSDictionary* Live2DReadModelConfiguration(NSURL* file, NSError** error);
+FOUNDATION_EXPORT NSArray<NSDictionary*>* Live2DScanModels(NSURL* root, NSString* prefix, BOOL legacy, NSError** error);
