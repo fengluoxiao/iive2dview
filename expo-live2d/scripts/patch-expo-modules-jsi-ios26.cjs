@@ -13,6 +13,13 @@ if (!fs.existsSync(packageRoot)) {
   throw new Error(`expo-modules-jsi source directory was not found: ${packageRoot}`);
 }
 
+function walk(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? walk(entryPath) : [entryPath];
+  });
+}
+
 function replaceRequired(filePath, from, to, description) {
   const source = fs.readFileSync(filePath, 'utf8');
   if (source.includes(to)) return false;
@@ -21,6 +28,16 @@ function replaceRequired(filePath, from, to, description) {
   }
   fs.writeFileSync(filePath, source.replace(from, to));
   return true;
+}
+
+let weakReferencesPatched = 0;
+for (const filePath of walk(packageRoot).filter((file) => file.endsWith('.swift'))) {
+  const source = fs.readFileSync(filePath, 'utf8');
+  const patched = source.replace(/weak let runtime/g, 'weak var runtime');
+  if (patched !== source) {
+    fs.writeFileSync(filePath, patched);
+    weakReferencesPatched += 1;
+  }
 }
 
 const schedulerHeader = path.join(
@@ -63,18 +80,26 @@ const promiseFile = path.join(
   'JavaScriptPromise.swift',
 );
 const promiseSource = fs.readFileSync(promiseFile, 'utf8');
-const patchedPromise = promiseSource.replace(
-  /(@JavaScriptActor\r?\n[ \t]*private final class LongLivedState: LongLivedObject \{\r?\n)/,
-  '$1    nonisolated init() {}\n',
-);
-if (patchedPromise === promiseSource && !promiseSource.includes('nonisolated init() {}')) {
+let promisePatched = false;
+if (!promiseSource.includes('nonisolated init() {}')) {
+  const patchedPromise = promiseSource.replace(
+    /(@JavaScriptActor\r?\n[ \t]*private final class LongLivedState: LongLivedObject \{\r?\n)/,
+    '$1    nonisolated init() {}\n',
+  );
+  if (patchedPromise === promiseSource) {
+    throw new Error(`Unable to apply JavaScriptPromise initializer patch: ${promiseFile}`);
+  }
+  fs.writeFileSync(promiseFile, patchedPromise);
+  promisePatched = true;
+}
+if (!fs.readFileSync(promiseFile, 'utf8').includes('nonisolated init() {}')) {
   throw new Error(`Unable to apply JavaScriptPromise initializer patch: ${promiseFile}`);
 }
-if (patchedPromise !== promiseSource) fs.writeFileSync(promiseFile, patchedPromise);
 
 console.log(
   `[iOS 26 compatibility] ExpoModulesJSI patched: ` +
+    `${weakReferencesPatched} weak references, ` +
     `${patchedScheduler === schedulerSource ? 0 : 1} header, ` +
     `${regexPatched ? 1 : 0} regex, ` +
-    `${patchedPromise === promiseSource ? 0 : 1} initializer.`,
+    `${promisePatched ? 1 : 0} initializer.`,
 );
