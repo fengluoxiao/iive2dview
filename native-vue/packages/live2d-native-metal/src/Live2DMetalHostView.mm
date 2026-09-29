@@ -9,6 +9,7 @@
 #import "Live2DMetalContext.h"
 #import "Live2DStudioMedia.h"
 #import "Live2DModelLibrary.h"
+#import "Live2DFolderPicker.h"
 #import <SSZipArchive/SSZipArchive.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CubismFramework.hpp>
@@ -63,8 +64,7 @@ void InitializeCubismOnce()
     BOOL _studioInitialized;
     BOOL _studioImporting;
     NSString* _studioPendingModelId;
-    UIDocumentPickerViewController* _studioFolderPicker;
-    BOOL _studioFolderPickerHandled;
+    Live2DFolderPicker* _studioFolderPicker;
     NSInteger _studioExpressionIndex;
     Live2DStudioMedia* _studioMedia;
 }
@@ -452,27 +452,19 @@ void InitializeCubismOnce()
 
 - (void)presentFolderImporter
 {
-    if (_studioFolderPicker.presentingViewController) return;
+    if (_studioFolderPicker.resultDelegate) return;
+    [_studioFolderPicker invalidate];
     [_studioFolderPicker release]; _studioFolderPicker = nil;
-    _studioFolderPickerHandled = NO;
-    // Directories require open-in-place mode, not import/copy mode.
-    // Copy the selected directory ourselves while holding security access.
-    UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
-        initForOpeningContentTypes:@[UTTypeFolder]
-        asCopy:NO];
-    picker.delegate = self;
-    picker.allowsMultipleSelection = NO;
-    picker.modalPresentationStyle = UIModalPresentationFullScreen;
-
-    UIViewController* presenter = [self activePresenter];
-    if (presenter == nil) {
-        [picker release];
+    _studioFolderPicker = [[Live2DFolderPicker alloc] init];
+    _studioFolderPicker.resultDelegate = self;
+    if (![_studioFolderPicker openFromWindow:self.window]) {
+        [_studioFolderPicker invalidate];
+        [self studioSetStatus:@"文件夹选择器无法打开：请返回应用前台后重试"];
+        [self studioEmitState];
         return;
     }
-    _studioFolderPicker = picker;
     [self studioSetStatus:@"等待文件夹选择结果：进入目标目录后点右上角“打开”"];
     [self studioEmitState];
-    [presenter presentViewController:picker animated:YES completion:nil];
 }
 
 // Some Files/provider versions have been reported to deliver only the legacy
@@ -484,10 +476,6 @@ void InitializeCubismOnce()
 
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
 {
-    if (controller == _studioFolderPicker) {
-        if (_studioFolderPickerHandled) return;
-        _studioFolderPickerHandled = YES;
-    }
     NSURL* selectedURL = urls.firstObject;
     if (!selectedURL) {
         [self studioSetStatus:@"系统未返回所选目录地址，文件选择未完成"]; [self studioEmitState]; return;
@@ -570,10 +558,6 @@ void InitializeCubismOnce()
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController*)controller
 {
-    if (controller == _studioFolderPicker) {
-        if (_studioFolderPickerHandled) return;
-        _studioFolderPickerHandled = YES;
-    }
     [self studioSetStatus:@"已取消导入"]; [self studioEmitState];
 }
 
@@ -594,7 +578,7 @@ void InitializeCubismOnce()
 
 - (void)dealloc
 {
-    _studioFolderPicker.delegate = nil;
+    [_studioFolderPicker invalidate];
     [_studioFolderPicker release];
     [_studioMedia invalidate];
     _renderer.studioFrameHandler = nil;
