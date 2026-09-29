@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-unsigned-ipa:
-    runs-on: macos-15
+    runs-on: macos-26
     defaults:
       run:
         working-directory: expo-live2d
@@ -22,14 +22,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: expo-live2d/package-lock.json
-      - name: Select Xcode 26.0.1 for Expo SDK 57
+      - name: Select Xcode 26.6 for Expo SDK 57
         run: |
           set -euo pipefail
-          # Expo SDK 57's ExpoModulesJSI requires Swift 6.2, but hits an
-          # upstream Swift/C++ interop compiler error in Xcode 26.3. 26.0.1
-          # is the compatible iOS 26 SDK supplied by the macos-15 runner.
-          test -d /Applications/Xcode_26.0.1.app
-          sudo xcode-select --switch /Applications/Xcode_26.0.1.app/Contents/Developer
+          # macos-26 provides Xcode 26.6 / Swift 6.3. Swift 6.2 on macos-15
+          # rejects Expo SDK 57's JSI pointer captures during XCFramework builds.
+          test -d /Applications/Xcode_26.6.app
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
           xcodebuild -version
           xcodebuild -showsdks
       - name: Install JavaScript dependencies
