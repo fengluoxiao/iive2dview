@@ -58,6 +58,8 @@ void InitializeCubismOnce()
     NSString* _studioDirection;
     NSString* _studioStatus;
     BOOL _studioBlink;
+    BOOL _studioInitialized;
+    NSInteger _studioExpressionIndex;
     Live2DStudioMedia* _studioMedia;
 }
 
@@ -108,6 +110,7 @@ void InitializeCubismOnce()
         _studioDirection = [@"C" copy];
         _studioStatus = [@"导入文件夹或 ZIP，开始预览" copy];
         _studioBlink = YES;
+        _studioExpressionIndex = -1;
         _pinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinch:)];
         _pinchGesture.cancelsTouchesInView = YES;
         _pinchGesture.delegate = self;
@@ -233,7 +236,11 @@ void InitializeCubismOnce()
     NSArray* entries = groups[idleGroup ?: @""];
     for (NSUInteger i = 0; i < entries.count; i++) {
         all.push_back((int)i);
-        NSString* name = entries[i][@"Name"] ?: [entries[i][@"File"] stringByDeletingPathExtension];
+        NSString* name = entries[i][@"Name"];
+        if (!name) {
+            name = [entries[i][@"File"] lastPathComponent];
+            if ([name hasSuffix:@".motion3.json"]) name = [name substringToIndex:name.length - 13];
+        }
         if ([name hasSuffix:[@"_" stringByAppendingString:_studioDirection]]) matches.push_back((int)i);
     }
     model->ConfigureIdle((idleGroup ?: @"").UTF8String, matches.empty() ? all : matches);
@@ -256,9 +263,12 @@ void InitializeCubismOnce()
     NSString* directory = [url.path.stringByDeletingLastPathComponent stringByAppendingString:@"/"];
     LAppLive2DManager* manager = [LAppLive2DManager getInstance];
     if (![manager loadModelAtDirectory:directory.UTF8String fileName:url.lastPathComponent.UTF8String]) {
+        [_studioModelId release]; _studioModelId = nil;
+        [_studioMetadata release]; _studioMetadata = nil;
         [self studioSetStatus:@"模型加载失败，请检查 moc3 和贴图文件"]; return;
     }
     [self resetFace];
+    _studioExpressionIndex = -1;
     [_renderer resetStudioPosition];
     [_renderer setStudioScale:1];
     [_studioModelId release];
@@ -277,18 +287,24 @@ void InitializeCubismOnce()
     if (!self.studioEvent) return;
     self.studioEvent(@{@"models": _studioCatalog ?: @[], @"selectedModelId": _studioModelId ?: @"",
         @"metadata": _studioMetadata ?: @{}, @"view": [_renderer studioViewState],
-        @"status": _studioStatus ?: @"", @"direction": _studioDirection, @"blink": @(_studioBlink)});
+        @"status": _studioStatus ?: @"", @"direction": _studioDirection, @"blink": @(_studioBlink),
+        @"expressionIndex": @(_studioExpressionIndex)});
 }
 
 - (void)performStudioCommand:(NSDictionary*)command
 {
     NSString* type = command[@"type"];
     LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
-    if ([type isEqual:@"initialize"]) {
+    if (!_studioInitialized && self.window && self.bounds.size.width > 0 && self.bounds.size.height > 0) {
+        _studioInitialized = YES;
         [self studioScanLibrary];
         NSString* last = [[NSUserDefaults standardUserDefaults] stringForKey:@"studioLastModel"];
-        if (!_studioModelId && _studioCatalog.count) [self studioLoadModel:last ?: _studioCatalog[0][@"id"]];
-    } else if ([type isEqual:@"import"]) {
+        BOOL found = NO;
+        for (NSDictionary* item in _studioCatalog) if ([item[@"id"] isEqual:last]) found = YES;
+        if (!_studioModelId && _studioCatalog.count) [self studioLoadModel:found ? last : _studioCatalog[0][@"id"]];
+        model = [[LAppLive2DManager getInstance] getModel:0];
+    }
+    if ([type isEqual:@"import"]) {
         [self presentModelImporter];
     } else if ([type isEqual:@"selectModel"]) {
         [self studioLoadModel:command[@"id"]];
@@ -312,8 +328,8 @@ void InitializeCubismOnce()
     } else if ([type isEqual:@"expression"] && model) {
         NSInteger index = [command[@"index"] integerValue];
         NSArray* entries = _studioMetadata[@"expressions"];
-        if (index < 0) model->ClearStudioExpression();
-        else if (index < (NSInteger)entries.count) model->SetExpression([entries[index][@"Name"] UTF8String]);
+        if (index < 0) { model->ClearStudioExpression(); _studioExpressionIndex = -1; }
+        else if (index < (NSInteger)entries.count) { model->SetExpression([entries[index][@"Name"] UTF8String]); _studioExpressionIndex = index; }
     } else if ([type isEqual:@"scale"]) {
         [_renderer setStudioScale:[command[@"value"] doubleValue]];
     } else if ([type isEqual:@"mirror"]) {
@@ -327,7 +343,14 @@ void InitializeCubismOnce()
     } else if ([type isEqual:@"reset"]) {
         [self resetFace];
         [_renderer resetStudioPosition];
-        if (model) { model->StopStudioMotion(); model->SetRandomExpression(); }
+        if (model) {
+            model->StopStudioMotion();
+            NSArray* entries = _studioMetadata[@"expressions"];
+            if (entries.count) {
+                _studioExpressionIndex = arc4random_uniform((uint32_t)entries.count);
+                model->SetExpression([entries[_studioExpressionIndex][@"Name"] UTF8String]);
+            } else { model->ClearStudioExpression(); _studioExpressionIndex = -1; }
+        }
     }
     [self studioEmitState];
 }

@@ -2,12 +2,12 @@ export type Direction = 'C' | 'L' | 'R';
 export type Motion = { Name?: string; File?: string };
 export type Model = { id: string; character: string; outfit: string };
 export type StudioState = {
-  models: Model[]; selectedModelId: string; status: string; direction: Direction; blink: boolean;
+  models: Model[]; selectedModelId: string; status: string; direction: Direction; blink: boolean; expressionIndex: number;
   metadata: { motions?: Record<string, Motion[]>; expressions?: Motion[]; drawables?: number };
   view: { scale: number; mirrored: boolean; fps: number; updateMs: number; pixelWidth: number; pixelHeight: number; gpu: string };
 };
 export const emptyState: StudioState = {
-  models: [], selectedModelId: '', status: '导入文件夹或 ZIP，开始预览', direction: 'C', blink: true, metadata: {},
+  models: [], selectedModelId: '', status: '导入文件夹或 ZIP，开始预览', direction: 'C', blink: true, expressionIndex: -1, metadata: {},
   view: { scale: 1, mirrored: false, fps: 0, updateMs: 0, pixelWidth: 0, pixelHeight: 0, gpu: 'Metal' },
 };
 export const faceControls = [

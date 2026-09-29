@@ -28,7 +28,12 @@ function Action({ label, onPress, selected = false, icon, compact = false, disab
   </Pressable>;
 }
 function Range({ label, value, min, max, onChange, suffix = '' }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void; suffix?: string }) {
-  return <View style={s.range}><Text style={s.rangeLabel}>{label}</Text><Slider accessibilityLabel={label} style={s.slider} value={value} minimumValue={min} maximumValue={max} step={max > 3 ? 1 : 0.01} onValueChange={onChange} minimumTrackTintColor="#e77a91" maximumTrackTintColor="#38445c" thumbTintColor="#f09aab" /><Text style={s.rangeValue}>{value.toFixed(max > 3 ? 0 : 2)}{suffix}</Text></View>;
+  // Slider 5.2 treats a literal zero as an omitted value. Normalize ranges and
+  // keep the lower endpoint nonzero so reset and negative ranges stay correct.
+  const position = Math.max(0.000001, (value - min) / (max - min));
+  const step = max > 3 ? 1 : 0.01;
+  const update = (fraction: number) => onChange(Math.max(min, Math.min(max, Number((Math.round((min + fraction * (max - min)) / step) * step).toFixed(2)))));
+  return <View style={s.range}><Text style={s.rangeLabel}>{label}</Text><Slider accessibilityLabel={label} style={s.slider} value={position} minimumValue={0} maximumValue={1} step={step / (max - min)} onValueChange={update} minimumTrackTintColor="#e77a91" maximumTrackTintColor="#38445c" thumbTintColor="#f09aab" /><Text style={s.rangeValue}>{value.toFixed(max > 3 ? 0 : 2)}{suffix}</Text></View>;
 }
 export default function App() { return <SafeAreaProvider><Studio /></SafeAreaProvider>; }
 function Studio() {
@@ -54,6 +59,7 @@ function Studio() {
   const receive = useCallback((event: NativeSyntheticEvent<StudioState>) => {
     const next = event.nativeEvent;
     if (next.selectedModelId !== live.current.state.selectedModelId) { setFaces(defaultFace); setExpression(-1); setAutoplay(false); }
+    setExpression(next.expressionIndex);
     setState(next);
   }, []);
   const reset = () => { setFaces(defaultFace); setAutoplay(false); setExpression(-1); send({ type: 'reset' }); };

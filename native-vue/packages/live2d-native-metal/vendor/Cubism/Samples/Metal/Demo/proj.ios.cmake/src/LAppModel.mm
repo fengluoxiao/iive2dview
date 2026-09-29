@@ -471,10 +471,6 @@ void LAppModel::Update()
     // 不透明度
     _opacity = _model->GetModelOpacity();
 
-    if (_blinkEnabled && _eyeBlink != NULL)
-    {
-        _eyeBlink->UpdateParameters(_model, deltaTimeSeconds);
-    }
     _updateScheduler.OnLateUpdate(_model, deltaTimeSeconds);
 
     // Apply editor values after motion, eye blink, and physics have updated
@@ -482,6 +478,18 @@ void LAppModel::Update()
     for (const auto& parameter : _externalParameterValues)
     {
         _model->SetParameterValue(parameter.first, parameter.second);
+    }
+
+    if (_blinkEnabled && _eyeBlink != NULL)
+    {
+        _eyeBlink->UpdateParameters(_model, deltaTimeSeconds);
+        const csmVector<CubismIdHandle>& ids = _eyeBlink->GetParameterIds();
+        for (csmInt32 i = 0; i < ids.GetSize(); ++i)
+        {
+            auto manual = _externalParameterValues.find(ids[i]);
+            if (manual != _externalParameterValues.end())
+                _model->SetParameterValue(ids[i], _model->GetParameterValue(ids[i]) * manual->second);
+        }
     }
 
     _model->Update();

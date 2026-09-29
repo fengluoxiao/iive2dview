@@ -16,7 +16,7 @@ Source of truth: `../src/App.tsx`, `../src/styles.css`, `../src/live2d.ts` (loca
 - [ ] Pan, pinch and scale slider agree; mirror; reset pose/position/expression without resetting zoom.
 - [ ] Auto/smooth/sharp quality modes with actual drawable sizing; real frame/update metrics.
 - [ ] PNG export via native Metal capture and iOS share sheet.
-- [ ] Native live PiP with AVKit, lifecycle/error handling and actual rendered frames.
+- [ ] Native live PiP with AVKit, lifecycle/error handling and actual rendered frames. User explicitly chose: freeze last frame in background; resume live model on returning to app. Apple prohibits Metal command submission in background.
 - [ ] Lint, TypeScript, meaningful behavior checks, native CI build, UI visual verification, unsigned IPA delivery.
 
 ## Constraints
@@ -29,5 +29,9 @@ Source of truth: `../src/App.tsx`, `../src/styles.css`, `../src/live2d.ts` (loca
 
 ## Progress
 
-- Source inventory complete. Current Expo UI only has three sliders and import/reset; most original features still need implementation.
-- Latest user-verified baseline: commit `68d8b8c`, Expo Actions Run 32.
+- All checklist features now have implementations in `App.tsx`, `studio.ts`, and the native Metal host. Checkboxes above remain acceptance gates, not claims of device testing.
+- UI-only browser QA at 430×932 and 1280×800 verified the dock, control sheet, sidebar and nine face controls. Corrected compact button sizing and slider zero positioning. This preview does not test native rendering.
+- Direction selection, filename fallback, face parameter mappings and labels pass four Node tests. TypeScript and Expo lint are required in CI before native compilation.
+- Native Expo build for `677808b` succeeded; subsequent lifecycle, slider and PiP changes require a fresh build.
+- PiP stops new Metal submissions while inactive. It retains the last sample in the background and resumes captures when active; PiP captures are capped at 30 FPS and a 960-pixel longest edge, while PNG export keeps render resolution.
+- Device acceptance still required: model import/relaunch, all controls with a real model, PNG sharing, PiP start/background/foreground, and gesture regression. The latest user-verified baseline before the full Studio port is `68d8b8c` (Expo Run 32).

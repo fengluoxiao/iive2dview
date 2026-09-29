@@ -50,6 +50,7 @@ using namespace LAppDefine;
     double _studioFps;
     double _studioUpdateMs;
     BOOL _studioAutoQuality;
+    id<MTLCommandBuffer> _lastStudioCommandBuffer;
 }
 
 - (void)releaseView
@@ -137,6 +138,24 @@ using namespace LAppDefine;
     Csm::Rendering::CubismRenderer_Metal::SetConstantSettings(_device);
 
     [self initializeScreen];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(studioWillResign:)
+        name:UIApplicationWillResignActiveNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(studioDidBecomeActive:)
+        name:UIApplicationDidBecomeActiveNotification object:nil];
+}
+
+- (void)studioWillResign:(NSNotification*)notification
+{
+    if (_lastStudioCommandBuffer.status == MTLCommandBufferStatusCommitted)
+        [_lastStudioCommandBuffer waitUntilScheduled];
+}
+
+- (void)studioDidBecomeActive:(NSNotification*)notification
+{
+    // Discard elapsed background time rather than advancing physics by minutes.
+    LAppPal::UpdateTime();
+    _studioFrameStart = 0;
+    _studioFrames = 0;
 }
 
 - (void)initializeScreen
@@ -586,6 +605,7 @@ using namespace LAppDefine;
 
 - (void)renderToMetalLayer:(nonnull CAMetalLayer *)layer
 {
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
     if (layer == nil || layer.drawableSize.width <= 0 || layer.drawableSize.height <= 0 || _commandQueue == nil || _depthTexture == nil)
     {
         return;
@@ -646,10 +666,14 @@ using namespace LAppDefine;
     [commandBuffer presentDrawable:currentDrawable];
     if (self.studioFrameHandler) self.studioFrameHandler(currentDrawable.texture, commandBuffer);
     [commandBuffer commit];
+    [_lastStudioCommandBuffer release];
+    _lastStudioCommandBuffer = [commandBuffer retain];
 }
 
 - (void)dealloc
 {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [_lastStudioCommandBuffer release];
     [_studioFrameHandler release];
     [self releaseView];
     [super dealloc];
