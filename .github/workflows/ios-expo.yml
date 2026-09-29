@@ -22,12 +22,14 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: expo-live2d/package-lock.json
-      - name: Select the newest installed Xcode
+      - name: Select Xcode compatible with Expo SDK 57
         run: |
           set -euo pipefail
-          xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' -print | sort -V | tail -n 1)"
-          test -n "$xcode_path"
-          sudo xcode-select --switch "$xcode_path/Contents/Developer"
+          # Expo SDK 57's ExpoModulesJSI has an upstream Swift/C++ interop
+          # compiler error in Xcode 26.3. Xcode 16.4 is included on macos-15
+          # and produces an iOS 16.4+ binary that runs on iOS 26 devices.
+          test -d /Applications/Xcode_16.4.app
+          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
           xcodebuild -showsdks
       - name: Install JavaScript dependencies
