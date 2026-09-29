@@ -470,6 +470,19 @@ using namespace LAppDefine;
     return deviceY * -1 + height;
 }
 
+- (void)translateViewBy:(CGPoint)translation
+{
+    if (_viewMatrix == NULL || _deviceToScreen == NULL)
+    {
+        return;
+    }
+    // Convert a UIKit point delta, not a position. Subtract the transformed
+    // origin so screen centering and safe-area offsets do not cause jumps.
+    const float x = [self transformScreenX:translation.x] - [self transformScreenX:0];
+    const float y = [self transformScreenY:translation.y] - [self transformScreenY:0];
+    _viewMatrix->AdjustTranslate(x, y);
+}
+
 - (void)adjustViewScaleAtPoint:(CGPoint)point factor:(CGFloat)factor
 {
     if (_viewMatrix == NULL || _deviceToScreen == NULL || factor <= 0.0f)

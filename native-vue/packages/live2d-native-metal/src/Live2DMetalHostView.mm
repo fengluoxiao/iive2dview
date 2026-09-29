@@ -37,6 +37,9 @@ void InitializeCubismOnce()
 }
 }
 
+@interface Live2DMetalHostView () <UIGestureRecognizerDelegate>
+@end
+
 @implementation Live2DMetalHostView
 {
     ViewController* _renderer;
@@ -45,6 +48,7 @@ void InitializeCubismOnce()
     NSURL* _importDirectory;
     NSMutableDictionary<NSString*, NSNumber*>* _parameterValues;
     UIPinchGestureRecognizer* _pinchGesture;
+    UIPanGestureRecognizer* _panGesture;
     CGFloat _lastPinchScale;
     BOOL _rendererAttachedToHost;
 }
@@ -87,7 +91,13 @@ void InitializeCubismOnce()
         _parameterValues = [[NSMutableDictionary alloc] init];
         _pinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinch:)];
         _pinchGesture.cancelsTouchesInView = YES;
+        _pinchGesture.delegate = self;
         [self addGestureRecognizer:_pinchGesture];
+        _panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        _panGesture.minimumNumberOfTouches = 1;
+        _panGesture.maximumNumberOfTouches = 1;
+        _panGesture.delegate = self;
+        [self addGestureRecognizer:_panGesture];
         // The embedded app imports its own models and does not bundle the
         // Cubism demo's background/control PNGs. Avoid initializing those
         // optional demo sprites during startup.
@@ -108,6 +118,26 @@ void InitializeCubismOnce()
     }
     CubismIdHandle parameter = CubismFramework::GetIdManager()->GetId(parameterId.UTF8String);
     model->SetExternalParameterValue(parameter, value);
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer*)gesture
+        shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer*)other
+{
+    return (gesture == _panGesture && other == _pinchGesture)
+        || (gesture == _pinchGesture && other == _panGesture);
+}
+
+- (void)handlePan:(UIPanGestureRecognizer*)gesture
+{
+    if ((gesture.state == UIGestureRecognizerStateBegan
+         || gesture.state == UIGestureRecognizerStateChanged)
+        && gesture.numberOfTouches == 1
+        && _pinchGesture.state != UIGestureRecognizerStateBegan
+        && _pinchGesture.state != UIGestureRecognizerStateChanged) {
+        [_renderer translateViewBy:[gesture translationInView:_metalView]];
+    }
+    // Consume only the current movement, including during finger transitions.
+    [gesture setTranslation:CGPointZero inView:_metalView];
 }
 
 - (void)handlePinch:(UIPinchGestureRecognizer*)gesture
@@ -307,6 +337,7 @@ void InitializeCubismOnce()
     }
     [_metalView removeFromSuperview];
     [_pinchGesture release];
+    [_panGesture release];
     [_parameterValues release];
     [_importDirectory release];
     [_textureManager release];
