@@ -104,10 +104,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   renderer: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
   },
   overlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
   },
   toolbar: {

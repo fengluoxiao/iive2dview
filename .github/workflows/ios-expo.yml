@@ -47,13 +47,7 @@ jobs:
           grep -F "pod 'Live2DNativeMetal'" Podfile
           grep -F "pod 'ExpoLive2DHost'" Podfile
       - name: Reapply iOS 26 ExpoModulesJSI patch before Xcode build
-        run: |
-          set -euo pipefail
-          node scripts/patch-expo-modules-jsi-ios26.cjs
-          promise_file="node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptPromise.swift"
-          test -f "$promise_file"
-          perl -0pi -e 's/[ \t]*\@JavaScriptActor\r?\n([ \t]*private final class LongLivedState)/$1/' "$promise_file"
-          ! grep -A1 -E '^[[:space:]]*@JavaScriptActor' "$promise_file" | grep -q 'LongLivedState'
+        run: node scripts/patch-expo-modules-jsi-ios26.cjs
       - name: Build the generated iPhone application without signing
         run: |
           set -euo pipefail
