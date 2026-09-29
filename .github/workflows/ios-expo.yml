@@ -35,6 +35,13 @@ jobs:
         run: |
           npm install --global npm@11.6.2
           npm ci
+      - name: Test native model library paths and diagnostics
+        run: |
+          clang -fobjc-arc -framework Foundation \
+            -I ../native-vue/packages/live2d-native-metal/src \
+            tests/model-library.m ../native-vue/packages/live2d-native-metal/src/Live2DModelLibrary.m \
+            -o "$RUNNER_TEMP/model-library-tests"
+          "$RUNNER_TEMP/model-library-tests"
       - name: Apply iOS 26 Swift compatibility patch for ExpoModulesJSI
         run: node scripts/patch-expo-modules-jsi-ios26.cjs
       - name: Validate Studio controls

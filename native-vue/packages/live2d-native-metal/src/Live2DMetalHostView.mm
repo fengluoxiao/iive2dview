@@ -8,6 +8,7 @@
 #import "LAppTextureManager.h"
 #import "Live2DMetalContext.h"
 #import "Live2DStudioMedia.h"
+#import "Live2DModelLibrary.h"
 #import <SSZipArchive/SSZipArchive.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CubismFramework.hpp>
@@ -53,6 +54,7 @@ void InitializeCubismOnce()
     CGFloat _lastPinchScale;
     BOOL _rendererAttachedToHost;
     NSArray* _studioCatalog;
+    NSDictionary* _studioModelURLs;
     NSDictionary* _studioMetadata;
     NSString* _studioModelId;
     NSString* _studioDirection;
@@ -206,11 +208,17 @@ void InitializeCubismOnce()
 {
     NSURL* root = [self studioLibraryURL];
     NSMutableArray* catalog = [NSMutableArray array];
+    NSMutableDictionary* modelURLs = [NSMutableDictionary dictionary];
     NSDirectoryEnumerator* files = [[NSFileManager defaultManager] enumeratorAtURL:root includingPropertiesForKeys:nil
         options:NSDirectoryEnumerationSkipsHiddenFiles errorHandler:nil];
     for (NSURL* url in files) {
         if (![url.lastPathComponent.lowercaseString hasSuffix:@".model3.json"]) continue;
-        NSString* relative = [url.path substringFromIndex:root.path.length + 1];
+        NSString* relative = Live2DModelIdentifier(root, url);
+        if (!relative) continue;
+        NSNumber* regular = nil;
+        [url getResourceValue:&regular forKey:NSURLIsRegularFileKey error:nil];
+        if (!regular.boolValue) continue;
+        modelURLs[relative] = url;
         NSArray* parts = relative.pathComponents;
         NSString* outfit = [url.lastPathComponent substringToIndex:url.lastPathComponent.length - 12];
         // The first component is our import UUID, never expose it as a name.
@@ -218,6 +226,8 @@ void InitializeCubismOnce()
         [catalog addObject:@{@"id": relative, @"character": character, @"outfit": outfit}];
     }
     [_studioCatalog release];
+    [_studioModelURLs release];
+    _studioModelURLs = [modelURLs copy];
     _studioCatalog = [[catalog sortedArrayUsingComparator:^NSComparisonResult(NSDictionary* a, NSDictionary* b) {
         return [a[@"id"] localizedStandardCompare:b[@"id"]];
     }] copy];
@@ -254,11 +264,12 @@ void InitializeCubismOnce()
         if ([item[@"id"] isEqual:identifier]) { entry = item; break; }
     }
     if (!entry) { [self studioSetStatus:@"找不到该模型，请重新导入"]; return; }
-    NSURL* url = [[self studioLibraryURL] URLByAppendingPathComponent:identifier];
-    NSData* data = [NSData dataWithContentsOfURL:url];
-    id json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-    if (![json isKindOfClass:NSDictionary.class] || ![json[@"FileReferences"] isKindOfClass:NSDictionary.class]) {
-        [self studioSetStatus:@"模型配置无效，无法读取 model3.json"]; return;
+    NSURL* url = _studioModelURLs[identifier];
+    NSError* readError = nil;
+    NSDictionary* json = Live2DReadModelConfiguration(url, &readError);
+    if (!json) {
+        [self studioSetStatus:[NSString stringWithFormat:@"%@：%@", url.lastPathComponent ?: @"模型配置",
+            readError.localizedDescription ?: @"无法读取文件"]]; return;
     }
     NSString* directory = [url.path.stringByDeletingLastPathComponent stringByAppendingString:@"/"];
     LAppLive2DManager* manager = [LAppLive2DManager getInstance];
@@ -363,33 +374,28 @@ void InitializeCubismOnce()
     }
 
     UIAlertController* sourcePicker = [UIAlertController
-        alertControllerWithTitle:@"Import Live2D model"
-        message:@"Choose a model folder or a ZIP archive."
-        preferredStyle:UIAlertControllerStyleActionSheet];
-    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import folder"
+        alertControllerWithTitle:@"导入 Live2D 模型"
+        message:@"选择完整模型文件夹或 ZIP 压缩包"
+        preferredStyle:UIAlertControllerStyleAlert];
+    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"导入文件夹"
                                                      style:UIAlertActionStyleDefault
                                                    handler:^(UIAlertAction* action) {
         (void)action;
-        [self presentFolderImporter];
+        [presenter dismissViewControllerAnimated:YES completion:^{ [self presentFolderImporter]; }];
     }]];
-    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import ZIP"
+    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"导入 ZIP"
                                                      style:UIAlertActionStyleDefault
                                                    handler:^(UIAlertAction* action) {
         (void)action;
         UTType* zipType = [UTType typeWithFilenameExtension:@"zip"];
-        [self presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
+        [presenter dismissViewControllerAnimated:YES completion:^{
+            [self presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
+        }];
     }]];
-    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Cancel"
+    [sourcePicker addAction:[UIAlertAction actionWithTitle:@"取消"
                                                      style:UIAlertActionStyleCancel
                                                    handler:nil]];
 
-    // An action sheet needs a source rectangle when this host is ever used on
-    // an iPad. On iPhone it remains the normal bottom sheet.
-    UIPopoverPresentationController* popover = sourcePicker.popoverPresentationController;
-    if (popover != nil) {
-        popover.sourceView = self;
-        popover.sourceRect = self.bounds;
-    }
     [presenter presentViewController:sourcePicker animated:YES completion:nil];
 }
 
@@ -496,7 +502,7 @@ void InitializeCubismOnce()
     [_importDirectory release];
     _importDirectory = [destination retain];
     [self studioScanLibrary];
-    [self studioLoadModel:[modelURL.path substringFromIndex:[self studioLibraryURL].path.length + 1]];
+    [self studioLoadModel:Live2DModelIdentifier([self studioLibraryURL], modelURL)];
     [self studioEmitState];
 }
 
@@ -530,6 +536,7 @@ void InitializeCubismOnce()
     [_panGesture release];
     [_parameterValues release];
     [_studioCatalog release];
+    [_studioModelURLs release];
     [_studioMetadata release];
     [_studioModelId release];
     [_studioDirection release];
