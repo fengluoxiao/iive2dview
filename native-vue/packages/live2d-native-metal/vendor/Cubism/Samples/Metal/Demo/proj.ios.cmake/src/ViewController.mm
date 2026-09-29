@@ -255,7 +255,10 @@ using namespace LAppDefine;
                                   ViewLogicalMaxTop
                                   );
 
-    [self resizeSprite:width height:height];
+    if (_back || _gear || _power)
+    {
+        [self resizeSprite:width height:height];
+    }
 }
 
 - (void)initializeSprite
@@ -490,11 +493,18 @@ using namespace LAppDefine;
 
 - (void)renderSprite:(id<MTLRenderCommandEncoder>)renderEncoder
 {
-    [_back renderImmidiate:renderEncoder];
-
-    [_gear renderImmidiate:renderEncoder];
-
-    [_power renderImmidiate:renderEncoder];
+    if (_back)
+    {
+        [_back renderImmidiate:renderEncoder];
+    }
+    if (_gear)
+    {
+        [_gear renderImmidiate:renderEncoder];
+    }
+    if (_power)
+    {
+        [_power renderImmidiate:renderEncoder];
+    }
 }
 
 - (void)renderToMetalLayer:(nonnull CAMetalLayer *)layer

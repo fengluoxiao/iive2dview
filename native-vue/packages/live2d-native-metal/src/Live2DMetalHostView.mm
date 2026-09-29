@@ -81,7 +81,9 @@ void InitializeCubismOnce()
         // menu hit testing is intentionally disabled for this embedded renderer.
         _metalView.userInteractionEnabled = NO;
         [self addSubview:_metalView];
-        [_renderer initializeSprite];
+        // The embedded app imports its own models and does not bundle the
+        // Cubism demo's background/control PNGs. Avoid initializing those
+        // optional demo sprites during startup.
     }
     return self;
 }
