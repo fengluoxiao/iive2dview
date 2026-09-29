@@ -43,6 +43,26 @@ void InitializeCubismOnce()
     UIView* _metalView;
     LAppTextureManager* _textureManager;
     NSURL* _importDirectory;
+    BOOL _rendererAttachedToHost;
+}
+
+- (void)didMoveToWindow
+{
+    [super didMoveToWindow];
+    if (_rendererAttachedToHost || self.window == nil) {
+        return;
+    }
+
+    // The sample renderer is a view controller.  Attaching it to the React
+    // Native root controller gives UIKit a complete lifecycle on modern iOS
+    // scene-based applications instead of leaving its view orphaned.
+    UIViewController* hostController = self.window.rootViewController;
+    if (hostController == nil) {
+        return;
+    }
+    [hostController addChildViewController:_renderer];
+    [_renderer didMoveToParentViewController:hostController];
+    _rendererAttachedToHost = YES;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
@@ -158,6 +178,10 @@ void InitializeCubismOnce()
 - (void)dealloc
 {
     Live2DMetalClearHost(_renderer);
+    if (_rendererAttachedToHost) {
+        [_renderer willMoveToParentViewController:nil];
+        [_renderer removeFromParentViewController];
+    }
     [_metalView removeFromSuperview];
     [_importDirectory release];
     [_textureManager release];

@@ -5,6 +5,8 @@ dist/
 /*
 !/.github/
 !/.gitignore
+!/expo-live2d/
+!/expo-live2d/**
 !/native-vue/
 !/native-vue/**
 native-host/.tools/

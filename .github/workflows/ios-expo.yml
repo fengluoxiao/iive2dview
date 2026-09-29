@@ -1,0 +1,92 @@
+name: iOS Expo Live2D Metal
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'expo-live2d/**'
+      - 'native-vue/packages/live2d-native-metal/**'
+      - 'native-vue/scripts/compile-cubism-metal.sh'
+      - '.github/workflows/ios-expo.yml'
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: expo-live2d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: expo-live2d/package-lock.json
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          xcode_path="$(find /Applications -maxdepth 1 -type d -name 'Xcode*.app' -print | sort -V | tail -n 1)"
+          test -n "$xcode_path"
+          sudo xcode-select --switch "$xcode_path/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks
+      - name: Install JavaScript dependencies
+        run: npm ci
+      - name: Generate the Expo iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
+      - name: Compile Cubism Metal shaders for iPhone
+        run: bash ../native-vue/scripts/compile-cubism-metal.sh iphoneos
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+          grep -F "pod 'Live2DNativeMetal'" Podfile
+          grep -F "pod 'ExpoLive2DHost'" Podfile
+      - name: Build the generated iPhone application without signing
+        run: |
+          set -euo pipefail
+          workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' -type d -print -quit)"
+          project="$(find ios -maxdepth 1 -name '*.xcodeproj' -type d -print -quit)"
+          test -n "$workspace"
+          test -n "$project"
+          scheme="$(basename "$project" .xcodeproj)"
+          xcodebuild -list -workspace "$workspace" | tee xcodebuild-schemes.log
+          sed -n '/Schemes:/,$p' xcodebuild-schemes.log | sed -n 's/^[[:space:]]*//p' | grep -Fx "$scheme"
+          derived_data="$RUNNER_TEMP/live2d-expo-derived-data"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$derived_data" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            build 2>&1 | tee xcodebuild.log
+          app_info_plists="$(find "$derived_data/Build/Products/Release-iphoneos" -type f -path '*.app/Info.plist' -print)"
+          app_count="$(printf '%s\n' "$app_info_plists" | sed '/^$/d' | wc -l | tr -d ' ')"
+          test "$app_count" = 1
+          app="$(dirname "$app_info_plists")"
+          test -f "$app/Info.plist"
+          mkdir -p artifacts/Payload
+          cp -R "$app" artifacts/Payload/
+          (cd artifacts && zip -qry live2d-expo-metal-unsigned.ipa Payload)
+          unzip -Z1 artifacts/live2d-expo-metal-unsigned.ipa | grep -qE '^Payload/[^/]+\.app/Info\.plist$'
+          du -h artifacts/live2d-expo-metal-unsigned.ipa
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: live2d-expo-metal-unsigned-ipa
+          path: expo-live2d/artifacts/live2d-expo-metal-unsigned.ipa
+          if-no-files-found: error
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live2d-expo-metal-build-diagnostics
+          path: |
+            expo-live2d/xcodebuild.log
+            expo-live2d/xcodebuild-schemes.log
+            expo-live2d/ios/Podfile
+          if-no-files-found: warn
