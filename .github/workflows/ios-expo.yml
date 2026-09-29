@@ -97,6 +97,8 @@ jobs:
           test "$app_count" = 1
           app="$(dirname "$app_info_plists")"
           test -f "$app/Info.plist"
+          expected_bundle_id="$(node -p "require('./app.json').expo.ios.bundleIdentifier")"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = "$expected_bundle_id"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$app/Info.plist")" = true
           mkdir -p artifacts/Payload
           cp -R "$app" artifacts/Payload/

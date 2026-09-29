@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.fengluo.live2dmetal",
+      "bundleIdentifier": "com.sez.sez",
       "deploymentTarget": "18.0",
       "infoPlist": { "UIBackgroundModes": ["audio"], "CADisableMinimumFrameDurationOnPhone": true, "LSSupportsOpeningDocumentsInPlace": true }
     },
