@@ -116,10 +116,10 @@ const promiseFile = path.join(
 );
 const promiseSource = fs.readFileSync(promiseFile, 'utf8');
 const patchedPromise = promiseSource.replace(
-  /@JavaScriptActor\r?\n[ \t]*private final class LongLivedState/,
-  '  private final class LongLivedState',
+  /@JavaScriptActor\r?\n/,
+  '',
 );
-if (patchedPromise === promiseSource && !promiseSource.includes('  private final class LongLivedState')) {
+if (patchedPromise === promiseSource && promiseSource.includes('@JavaScriptActor')) {
   throw new Error('Unable to apply the JavaScriptPromise actor compatibility patch');
 }
 if (patchedPromise !== promiseSource) {
