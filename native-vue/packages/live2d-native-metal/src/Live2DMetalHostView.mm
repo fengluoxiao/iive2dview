@@ -324,7 +324,16 @@ void InitializeCubismOnce()
         [_studioPendingModelId release]; _studioPendingModelId = nil;
         model = [[LAppLive2DManager getInstance] getModel:0];
     }
-    if ([type isEqual:@"import"]) {
+    if ([type isEqual:@"importFolder"] || [type isEqual:@"importZip"]) {
+        if (_studioImporting) {
+            [self studioSetStatus:@"模型正在导入，请等待当前复制完成"];
+        } else if ([type isEqual:@"importFolder"]) {
+            [self presentFolderImporter];
+        } else {
+            UTType* zipType = [UTType typeWithFilenameExtension:@"zip"];
+            [self presentModelPickerForContentTypes:zipType ? @[zipType] : @[]];
+        }
+    } else if ([type isEqual:@"import"]) {
         [self presentModelImporter];
     } else if ([type isEqual:@"selectModel"]) {
         [self studioLoadModel:command[@"id"]];
@@ -393,16 +402,14 @@ void InitializeCubismOnce()
                                                      style:UIAlertActionStyleDefault
                                                    handler:^(UIAlertAction* action) {
         (void)action;
-        [presenter dismissViewControllerAnimated:YES completion:^{ [self presentFolderImporter]; }];
+        [self presentFolderImporter];
     }]];
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"导入 ZIP"
                                                      style:UIAlertActionStyleDefault
                                                    handler:^(UIAlertAction* action) {
         (void)action;
         UTType* zipType = [UTType typeWithFilenameExtension:@"zip"];
-        [presenter dismissViewControllerAnimated:YES completion:^{
-            [self presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
-        }];
+        [self presentModelPickerForContentTypes:(zipType == nil ? @[] : @[zipType])];
     }]];
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"取消"
                                                      style:UIAlertActionStyleCancel
