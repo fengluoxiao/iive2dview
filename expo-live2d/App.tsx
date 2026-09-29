@@ -38,11 +38,11 @@ function Range({ label, value, min, max, onChange, suffix = '' }: { label: strin
 }
 export default function App() { return <SafeAreaProvider>{Platform.OS === 'android' ? <AndroidModelsLibrary /> : <Studio />}</SafeAreaProvider>; }
 function Studio() {
-  const { width, height } = useWindowDimensions(); const insets = useSafeAreaInsets(); const wide = width > 760;
+  const { width, height } = useWindowDimensions(); const insets = useSafeAreaInsets(); const wide = width > 760 || width > height;
   const [state, setState] = useState(emptyState);
   const [command, setCommand] = useState<Command>({ type: 'initialize', seq: 0 }); const serial = useRef(0);
   const send = useCallback((c: Command) => setCommand({ ...c, seq: ++serial.current }), []);
-  const [panel, setPanel] = useState(false); const [tab, setTab] = useState<'motion' | 'expression' | 'face'>('motion');
+  const [panel, setPanel] = useState(false); const [tab, setTab] = useState<'model' | 'view' | 'motion' | 'expression' | 'face'>('model');
   const [faces, setFaces] = useState(defaultFace); const [autoplay, setAutoplay] = useState(false);
   const [quality, setQuality] = useState('sharp'); const [expression, setExpression] = useState(-1);
   const [picker, setPicker] = useState<'character' | 'outfit' | null>(null);
@@ -68,35 +68,43 @@ function Studio() {
     setState(next);
   }, []);
   const reset = () => { setFaces(defaultFace); setAutoplay(false); setExpression(-1); send({ type: 'reset' }); };
+  const controlTabs = <View style={s.controlTabs}>{(['model', 'view', 'motion', 'expression', 'face'] as const).map((id, i) =>
+    <Pressable key={id} accessibilityRole="tab" accessibilityState={{ selected: tab === id }} onPress={() => setTab(id)} style={[s.segment, tab === id && s.segmentActive]}>
+      <Text style={[s.segmentText, tab === id && s.activeText]}>{['模型', '视图', '动作', '表情', '五官'][i]}</Text>
+    </Pressable>)}</View>;
   const controls = <>
-    <View style={s.section}><Text style={s.sectionLabel}>模型</Text>
+    {tab === 'model' && <View style={s.section}><Text style={s.sectionLabel}>模型</Text>
       <View style={s.modelCard}><View style={s.modelMark}><Text style={s.markText}>{displayName(selected?.character ?? 'L').slice(0, 1)}</Text></View><View style={{ flex: 1 }}><Text style={s.modelName}>{displayName(selected?.character ?? '导入模型')}</Text><Text style={s.modelOutfit}>{displayName(selected?.outfit ?? '文件夹 / ZIP')}</Text></View><View style={s.dot} /></View>
       <View style={s.row}><Action label={displayName(selected?.character ?? '选择角色')} onPress={() => setPicker(picker === 'character' ? null : 'character')} /><Action label={displayName(selected?.outfit ?? '选择服装')} onPress={() => setPicker(picker === 'outfit' ? null : 'outfit')} /></View>
       {picker && <View style={s.selectionList}>{state.models.filter((m, i, all) => picker === 'character' ? all.findIndex(a => a.character === m.character) === i : m.character === selected?.character).map(m => <Action key={m.id} label={displayName(picker === 'character' ? m.character : m.outfit)} selected={m.id === selected?.id} onPress={() => { send({ type: 'selectModel', id: m.id }); setPicker(null); }} />)}</View>}
       <View style={s.row}><Action label="导入文件夹" onPress={() => { setPanel(false); send({ type: 'importFolder' }); }} /><Action label="导入 ZIP" onPress={() => { setPanel(false); send({ type: 'importZip' }); }} /></View>
       <View style={s.row}><Action label="刷新模型" onPress={() => send({ type: 'refreshModels' })} /></View>
       <Text selectable style={s.empty}>文件 → 我的 iPhone / iPad → Live2D Metal → models。把完整模型文件夹放入，返回后自动扫描。ZIP 请先解压或使用导入 ZIP。</Text>
-    </View>
-    <View style={s.section}><Text style={s.sectionLabel}>视图</Text><Range label="缩放" min={0.45} max={2.4} value={state.view.scale} suffix="x" onChange={value => send({ type: 'scale', value })} />
+    </View>}
+    {tab === 'view' && <View style={s.section}><Text style={s.sectionLabel}>视图</Text><Range label="缩放" min={0.45} max={2.4} value={state.view.scale} suffix="x" onChange={value => send({ type: 'scale', value })} />
       <View style={s.row}><Action compact icon="mirror" label="水平镜像" selected={state.view.mirrored} onPress={() => send({ type: 'mirror', value: !state.view.mirrored })} /><Action compact icon="fit" label="复位位置，保留缩放" onPress={reset} /><Action compact icon="export" label="导出 PNG" onPress={() => send({ type: 'export' })} /></View>
       <View style={s.segments}>{[['auto', '自动'], ['smooth', '流畅'], ['sharp', '高清']].map(([id, label]) => <Pressable key={id} accessibilityRole="button" onPress={() => { setQuality(id); send({ type: 'quality', value: id }); }} style={[s.segment, quality === id && s.segmentActive]}><Text style={[s.segmentText, quality === id && s.activeText]}>{label}</Text></Pressable>)}</View>
-    </View>
-    <View style={[s.section, { paddingBottom: 20 }]}><View style={s.segments}>{(['motion', 'expression', 'face'] as const).map((id, i) => <Pressable key={id} accessibilityRole="tab" accessibilityState={{ selected: tab === id }} onPress={() => setTab(id)} style={[s.segment, tab === id && s.segmentActive]}><Text style={[s.segmentText, tab === id && s.activeText]}>{['动作', '表情', '五官'][i]}</Text></Pressable>)}</View>
+      {!!state.pip?.backgroundSeconds && <Text style={s.empty}>上次后台 {state.pip.backgroundSeconds.toFixed(1)} 秒：刷新回调 {state.pip.backgroundDrawCalls} 次，提交 {state.pip.backgroundFrames} 帧</Text>}
+    </View>}
+    <View style={[s.section, { paddingBottom: 20 }]}>
       {tab === 'motion' && <View style={s.grid}>{groups.map(([group, entries]) => <View key={group} style={s.gridHalf}><Action icon="play" label={`${motionLabels[group.toLowerCase()] ?? group}  ${entries.length}`} onPress={() => send({ type: 'motion', group, index: directionIndex(entries, state.direction) })} /></View>)}<View style={s.gridHalf}><Action selected={autoplay} label={autoplay ? '■ 停止演示' : '✧ 自动演示'} disabled={!groups.length} onPress={() => setAutoplay(!autoplay)} /></View>{!groups.length && <Text style={s.empty}>此模型暂无可演示动作</Text>}</View>}
       {tab === 'expression' && <View style={s.grid}><View style={s.gridThird}><Action selected={expression === -1} label="无" onPress={() => { setExpression(-1); send({ type: 'expression', index: -1 }); }} /></View>{(state.metadata.expressions ?? []).map((e, index) => <View key={`${e.Name}-${index}`} style={s.gridThird}><Action selected={expression === index} label={(e.Name ?? `表情 ${index + 1}`).replace(/^exp_/, '').replace(/\d+$/, '')} onPress={() => { setExpression(index); send({ type: 'expression', index }); }} /></View>)}</View>}
       {tab === 'face' && <View style={{ paddingTop: 10 }}>{faceControls.map(c => <Range key={c.key} label={c.label} min={c.min} max={c.max} value={faces[c.key]} onChange={value => { setFaces(f => ({ ...f, [c.key]: value })); send({ type: 'parameter', ids: c.ids, value }); }} />)}<View style={s.row}><Action selected={state.blink} label={state.blink ? '眨眼已开启' : '眨眼已关闭'} onPress={() => send({ type: 'blink', value: !state.blink })} /><Action label="复位五官" onPress={() => { setFaces(defaultFace); send({ type: 'resetFace' }); }} /></View></View>}
     </View>
   </>;
   return <View style={[s.root, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}><StatusBar style="light" />
-    {wide && <View style={s.sidebar}><View style={s.brand}><View style={s.brandIcon}><Icon name="brand" color="white" /></View><Text style={s.brandTitle}>Live2D <Text style={s.muted}>Studio</Text></Text></View><ScrollView>{controls}</ScrollView><Text style={s.sidebarFooter}>{state.view.gpu} · Metal</Text></View>}
+    {wide && <View style={[s.sidebar, { width: Math.min(320, width * 0.42) }]}><View style={s.brand}><View style={s.brandIcon}><Icon name="brand" color="white" /></View><Text style={s.brandTitle}>Live2D <Text style={s.muted}>Studio</Text></Text></View>{controlTabs}<ScrollView key={tab} style={{ flex: 1 }}>{controls}</ScrollView><Text style={s.sidebarFooter}>{state.view.gpu} · Metal</Text></View>}
     <View style={s.workspace}><View style={s.topbar}>{!wide && <View style={s.mobileTitle}><Text numberOfLines={1} style={s.title}>{displayName(selected?.character ?? 'Live2D')}</Text><Text style={s.subtitle}>Live2D Studio</Text></View>}<View style={s.directions}>{(['C', 'L', 'R'] as Direction[]).map((d, i) => <Pressable accessibilityRole="button" accessibilityState={{ selected: state.direction === d }} key={d} onPress={() => send({ type: 'direction', value: d })} style={[s.direction, state.direction === d && s.segmentActive]}><Text style={[s.directionText, state.direction === d && s.activeText]}>{['正面', '左侧面', '右侧面'][i]}</Text></Pressable>)}</View>{wide && <Text style={s.badge}>GPU · Metal</Text>}<Pressable accessibilityLabel="画中画" onPress={() => send({ type: 'pip' })} style={s.pip}><Icon name="pip" color="white" size={16} /><Text style={s.pipText}>画中画</Text></Pressable></View>
-      <View style={s.stage}><Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%"><Defs><RadialGradient id="bg" cx="50%" cy="35%" rx="70%" ry="70%"><Stop offset="0" stopColor="#1b273b" /><Stop offset="0.65" stopColor="#101724" /><Stop offset="1" stopColor="#0b0e16" /></RadialGradient><Pattern id="grid" width={28} height={28} patternUnits="userSpaceOnUse"><Path d="M0 28V0H28" fill="none" stroke="#829cc2" strokeOpacity={0.04} /></Pattern></Defs><Rect width="100%" height="100%" fill="url(#bg)" /><Rect width="100%" height="100%" fill="url(#grid)" /></Svg>
+      <View testID="model-stage" style={s.stage}><Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%"><Defs><RadialGradient id="bg" cx="50%" cy="35%" rx="70%" ry="70%"><Stop offset="0" stopColor="#1b273b" /><Stop offset="0.65" stopColor="#101724" /><Stop offset="1" stopColor="#0b0e16" /></RadialGradient><Pattern id="grid" width={28} height={28} patternUnits="userSpaceOnUse"><Path d="M0 28V0H28" fill="none" stroke="#829cc2" strokeOpacity={0.04} /></Pattern></Defs><Rect width="100%" height="100%" fill="url(#bg)" /><Rect width="100%" height="100%" fill="url(#grid)" /></Svg>
         {NativeStudio && <NativeStudio style={StyleSheet.absoluteFill} studioCommand={command} onStudioEvent={receive} />}
         <Text pointerEvents="none" style={s.stageHint}>拖动平移 · 双指缩放</Text><View pointerEvents="none" style={s.hud}><Text style={s.fps}>{Math.round(state.view.fps) || '--'} <Text style={s.hudText}>/ 60 FPS</Text></Text><Text style={s.hudText}>原生 Metal</Text><Text style={s.hudText}>更新与提交 {state.view.updateMs.toFixed(1)} ms</Text><Text style={s.hudText}>{state.view.pixelWidth} × {state.view.pixelHeight}</Text><Text style={s.hudText}>{state.metadata.drawables ?? 0} DRAWABLES</Text></View>
         {!selected && <View pointerEvents="none" style={s.welcome}><Icon name="brand" size={38} color="#ec738a" /><Text style={s.welcomeTitle}>你的 Live2D 工作室</Text><Text style={s.muted}>打开控制台，导入模型开始创作</Text></View>}<View pointerEvents="none" style={s.toast}><View style={s.dot} /><Text style={s.toastText}>{state.status}</Text></View>
       </View>
-      {!wide && <View style={[s.dock, { paddingBottom: Math.max(8, insets.bottom) }]}>{(['controls', 'export', 'reset'] as const).map((icon, i) => <Pressable key={icon} accessibilityRole="button" onPress={() => i === 0 ? setPanel(true) : i === 1 ? send({ type: 'export' }) : reset()} style={s.dockButton}><Icon name={icon} color={i === 0 ? '#f39bad' : '#91a0ba'} size={20} /><Text style={[s.dockText, i === 0 && { color: '#f39bad' }]}>{['控制台', '导出', '复位'][i]}</Text></Pressable>)}</View>}
+      {panel && !wide && <View testID="model-console" style={[s.console, { height: Math.min(360, Math.max(180, (height - insets.top - insets.bottom - 123) * 0.43)) }]}>
+        <View style={s.consoleHeader}><Text style={s.consoleTitle}>控制台 · 实时预览</Text><Pressable accessibilityRole="button" accessibilityLabel="收起控制台" onPress={() => setPanel(false)} style={s.consoleClose}><Icon name="close" /></Pressable></View>
+        {controlTabs}<ScrollView key={tab} testID="console-scroll" style={{ flex: 1 }} keyboardShouldPersistTaps="handled">{controls}</ScrollView>
+      </View>}
+      {!wide && <View style={[s.dock, { paddingBottom: Math.max(8, insets.bottom) }]}>{(['controls', 'export', 'reset'] as const).map((icon, i) => <Pressable key={icon} accessibilityRole="button" onPress={() => i === 0 ? setPanel(p => !p) : i === 1 ? send({ type: 'export' }) : reset()} style={s.dockButton}><Icon name={icon} color={i === 0 ? '#f39bad' : '#91a0ba'} size={20} /><Text style={[s.dockText, i === 0 && { color: '#f39bad' }]}>{['控制台', '导出', '复位'][i]}</Text></Pressable>)}</View>}
     </View>
-    {panel && !wide && <View style={s.backdrop}><Pressable accessibilityLabel="关闭控制台" style={StyleSheet.absoluteFill} onPress={() => setPanel(false)} /><View style={[s.sheet, { maxHeight: Math.min(height * 0.76, 620), paddingBottom: Math.max(17, insets.bottom) }]}><View style={s.sheetHead}><View style={s.grabber} /><Pressable accessibilityLabel="关闭控制台" onPress={() => setPanel(false)} style={s.close}><Icon name="close" /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled">{controls}</ScrollView></View></View>}
   </View>;
 }

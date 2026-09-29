@@ -6,10 +6,11 @@
 @interface Live2DStudioMedia : NSObject <AVPictureInPictureControllerDelegate, MTKViewDelegate>
 @property (nonatomic, copy) void (^statusHandler)(NSString* message);
 - (void)configureSourceView:(UIView*)source device:(id<MTLDevice>)device
-             renderHandler:(void (^)(CAMetalLayer*))renderHandler
+             renderHandler:(BOOL (^)(MTKView*))renderHandler
              activeHandler:(void (^)(BOOL))activeHandler;
 - (void)requestExportFrom:(UIViewController*)presenter;
 - (void)togglePictureInPicture;
+- (NSDictionary*)pictureInPictureDiagnostics;
 - (void)captureTexture:(id<MTLTexture>)texture commandBuffer:(id<MTLCommandBuffer>)commandBuffer;
 - (void)invalidate;
 @end

@@ -111,7 +111,7 @@ void InitializeCubismOnce()
         };
         __unsafe_unretained Live2DMetalHostView* host = self;
         [_studioMedia configureSourceView:_metalView device:[_renderer getDevice]
-            renderHandler:^(CAMetalLayer* layer) { [host->_renderer renderStudioPipLayer:layer]; }
+            renderHandler:^BOOL(MTKView* view) { return [host->_renderer renderStudioPipView:view]; }
             activeHandler:^(BOOL active) { [host->_renderer setStudioPipActive:active]; }];
         _renderer.studioRenderErrorHandler = ^(NSString* message) { [host studioSetStatus:message]; [host studioEmitState]; };
         _studioMedia.statusHandler = ^(NSString* message) { [host studioSetStatus:message]; [host studioEmitState]; };
@@ -304,7 +304,7 @@ void InitializeCubismOnce()
     self.studioEvent(@{@"models": _studioCatalog ?: @[], @"selectedModelId": _studioModelId ?: @"",
         @"metadata": _studioMetadata ?: @{}, @"view": [_renderer studioViewState],
         @"status": _studioStatus ?: @"", @"direction": _studioDirection, @"blink": @(_studioBlink),
-        @"expressionIndex": @(_studioExpressionIndex)});
+        @"expressionIndex": @(_studioExpressionIndex), @"pip": [_studioMedia pictureInPictureDiagnostics]});
 }
 
 - (void)performStudioCommand:(NSDictionary*)command

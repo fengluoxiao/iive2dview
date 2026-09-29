@@ -6,6 +6,7 @@
  */
 
 #import <UIKit/UIKit.h>
+#import <MetalKit/MetalKit.h>
 #import "LAppModel.h"
 #import "MetalView.h"
 
@@ -91,7 +92,7 @@
 @property (nonatomic, copy) void (^studioFrameHandler)(id<MTLTexture> texture, id<MTLCommandBuffer> commandBuffer);
 @property (nonatomic, copy) void (^studioRenderErrorHandler)(NSString* message);
 - (void)setStudioPipActive:(BOOL)active;
-- (void)renderStudioPipLayer:(CAMetalLayer*)layer;
+- (BOOL)renderStudioPipView:(MTKView*)view;
 - (void)setStudioQuality:(NSString*)quality;
 
 /**

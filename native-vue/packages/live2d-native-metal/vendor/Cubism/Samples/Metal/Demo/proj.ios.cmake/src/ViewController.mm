@@ -30,6 +30,7 @@ using namespace std;
 using namespace LAppDefine;
 
 @interface ViewController ()
+- (BOOL)renderToMetalLayer:(CAMetalLayer*)layer drawable:(id<CAMetalDrawable>)drawable;
 @property (nonatomic) id<MTLDevice> device; //デバイス
 @property (nonatomic) LAppSprite *back; //背景画像
 @property (nonatomic) LAppSprite *gear; //歯車画像
@@ -53,6 +54,7 @@ using namespace LAppDefine;
     id<MTLCommandBuffer> _lastStudioCommandBuffer;
     BOOL _studioPipActive;
     BOOL _studioPipFailed;
+    NSUInteger _studioPipGeneration;
     CAMetalLayer* _studioPipLayer; // Only set during the MTKView draw callback.
     CFTimeInterval _studioLastPipDraw;
 }
@@ -610,43 +612,53 @@ using namespace LAppDefine;
 - (void)setStudioPipActive:(BOOL)active
 {
     _studioPipActive = active;
+    _studioPipGeneration++;
     _studioPipFailed = NO;
     _studioLastPipDraw = 0;
     LAppPal::UpdateTime();
     _studioFrameStart = 0; _studioFrames = 0;
 }
 
-- (void)renderStudioPipLayer:(CAMetalLayer*)layer
+- (BOOL)renderStudioPipView:(MTKView*)view
 {
-    if (!_studioPipActive || _studioPipFailed) return;
+    if (!_studioPipActive || _studioPipFailed) return NO;
+    id<CAMetalDrawable> drawable = view.currentDrawable;
+    if (!drawable) return NO;
+    CAMetalLayer* layer = (CAMetalLayer*)view.layer;
     CFTimeInterval now = CACurrentMediaTime();
     if (now - _studioLastPipDraw > 0.25) LAppPal::UpdateTime();
     _studioLastPipDraw = now;
     _studioPipLayer = layer;
-    [self renderToMetalLayer:layer];
+    BOOL submitted = [self renderToMetalLayer:layer drawable:drawable];
     _studioPipLayer = nil;
+    return submitted;
 }
 
 - (void)renderToMetalLayer:(nonnull CAMetalLayer *)layer
 {
+    [self renderToMetalLayer:layer drawable:nil];
+}
+
+- (BOOL)renderToMetalLayer:(CAMetalLayer*)layer drawable:(id<CAMetalDrawable>)drawable
+{
     const BOOL pipFrame = _studioPipActive && layer == _studioPipLayer;
-    if (!pipFrame && (_studioPipActive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive)) return;
+    if (!pipFrame && (_studioPipActive || UIApplication.sharedApplication.applicationState != UIApplicationStateActive)) return NO;
     if (layer == nil || layer.drawableSize.width <= 0 || layer.drawableSize.height <= 0 || _commandQueue == nil)
     {
-        return;
+        return NO;
     }
 
     if (!_depthTexture || _depthTexture.width != (NSUInteger)layer.drawableSize.width || _depthTexture.height != (NSUInteger)layer.drawableSize.height)
         [self drawableResize:layer.drawableSize];
-    if (!_depthTexture) return;
+    if (!_depthTexture) return NO;
 
     LAppPal::UpdateTime();
 
     id <MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
-    id<CAMetalDrawable> currentDrawable = [layer nextDrawable];
+    id<CAMetalDrawable> currentDrawable = drawable ?: [layer nextDrawable];
     if (commandBuffer == nil || currentDrawable == nil || currentDrawable.texture == nil)
     {
-        return;
+        return NO;
     }
 
     MTLRenderPassDescriptor *renderPassDescriptor = [[[MTLRenderPassDescriptor alloc] init] autorelease];
@@ -695,9 +707,10 @@ using namespace LAppDefine;
     [commandBuffer presentDrawable:currentDrawable];
     if (self.studioFrameHandler) self.studioFrameHandler(currentDrawable.texture, commandBuffer);
     if (pipFrame) {
+        NSUInteger generation = _studioPipGeneration;
         [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> completed) {
             if (completed.status == MTLCommandBufferStatusError) dispatch_async(dispatch_get_main_queue(), ^{
-                if (!self->_studioPipActive || self->_studioPipFailed) return;
+                if (!self->_studioPipActive || self->_studioPipFailed || generation != self->_studioPipGeneration) return;
                 self->_studioPipFailed = YES;
                 if (self.studioRenderErrorHandler) self.studioRenderErrorHandler(
                     [NSString stringWithFormat:@"画中画 GPU 渲染失败：%@", completed.error.localizedDescription]);
@@ -707,6 +720,7 @@ using namespace LAppDefine;
     [commandBuffer commit];
     [_lastStudioCommandBuffer release];
     _lastStudioCommandBuffer = [commandBuffer retain];
+    return YES;
 }
 
 - (void)dealloc

@@ -2,6 +2,7 @@ export type Direction = 'C' | 'L' | 'R';
 export type Motion = { Name?: string; File?: string };
 export type Model = { id: string; character: string; outfit: string };
 export type StudioState = {
+  pip?: { active: boolean; suspended: boolean; backgroundFrames: number; backgroundDrawCalls: number; backgroundSeconds: number };
   models: Model[]; selectedModelId: string; status: string; direction: Direction; blink: boolean; expressionIndex: number;
   metadata: { motions?: Record<string, Motion[]>; expressions?: Motion[]; drawables?: number };
   view: { scale: number; mirrored: boolean; fps: number; updateMs: number; pixelWidth: number; pixelHeight: number; gpu: string };
