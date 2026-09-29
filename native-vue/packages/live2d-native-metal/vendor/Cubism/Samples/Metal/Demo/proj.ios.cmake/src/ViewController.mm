@@ -258,7 +258,7 @@ using namespace LAppDefine;
 
     // デバイスに対応する画面の範囲。 Xの左端, Xの右端, Yの下端, Yの上端
     _viewMatrix->SetScreenRect(left, right, bottom, top);
-    _viewMatrix->Scale(ViewScale, ViewScale);
+    // Resizing the stage (including rotation) must preserve the user's zoom.
 
     _deviceToScreen->LoadIdentity(); // サイズが変わった際などリセット必須
     if (width > height)
