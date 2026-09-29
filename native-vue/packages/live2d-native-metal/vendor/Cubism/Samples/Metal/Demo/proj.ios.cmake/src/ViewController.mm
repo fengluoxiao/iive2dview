@@ -44,6 +44,13 @@ using namespace LAppDefine;
 @end
 
 @implementation ViewController
+{
+    NSUInteger _studioFrames;
+    CFTimeInterval _studioFrameStart;
+    double _studioFps;
+    double _studioUpdateMs;
+    BOOL _studioAutoQuality;
+}
 
 - (void)releaseView
 {
@@ -106,6 +113,9 @@ using namespace LAppDefine;
     view.delegate = self;
 
     view.metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    view.opaque = NO;
+    view.metalLayer.opaque = NO;
+    view.backgroundColor = UIColor.clearColor;
 
     _commandQueue = [_device newCommandQueue];
 
@@ -483,6 +493,37 @@ using namespace LAppDefine;
     _viewMatrix->AdjustTranslate(x, y);
 }
 
+- (void)setStudioScale:(CGFloat)scale
+{
+    if (_viewMatrix == NULL || !isfinite(scale)) return;
+    _viewMatrix->AdjustScale(0, 0, scale / _viewMatrix->GetScaleX());
+}
+
+- (void)resetStudioPosition
+{
+    if (_viewMatrix == NULL) return;
+    _viewMatrix->Translate(0, 0);
+    self.studioMirrored = NO;
+}
+
+- (NSDictionary*)studioViewState
+{
+    MetalUIView* view = (MetalUIView*)self.view;
+    return @{@"scale": @(_viewMatrix ? _viewMatrix->GetScaleX() : 1),
+             @"mirrored": @(self.studioMirrored), @"fps": @(_studioFps),
+             @"updateMs": @(_studioUpdateMs), @"pixelWidth": @(view.metalLayer.drawableSize.width),
+             @"pixelHeight": @(view.metalLayer.drawableSize.height), @"gpu": _device.name ?: @"Metal"};
+}
+
+- (void)setStudioQuality:(NSString*)quality
+{
+    MetalUIView* view = (MetalUIView*)self.view;
+    _studioAutoQuality = [quality isEqualToString:@"auto"];
+    CGFloat nativeScale = self.view.window.screen.nativeScale ?: self.traitCollection.displayScale;
+    view.studioResolutionScale = [quality isEqualToString:@"smooth"] ? MIN(nativeScale, 1.5) : nativeScale;
+    [view resizeDrawable:view.studioResolutionScale];
+}
+
 - (void)adjustViewScaleAtPoint:(CGPoint)point factor:(CGFloat)factor
 {
     if (_viewMatrix == NULL || _deviceToScreen == NULL || factor <= 0.0f)
@@ -562,7 +603,7 @@ using namespace LAppDefine;
     renderPassDescriptor.colorAttachments[0].texture = currentDrawable.texture;
     renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
     renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
-    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
 
     id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
 
@@ -576,8 +617,30 @@ using namespace LAppDefine;
     [renderEncoder endEncoding];
 
     LAppLive2DManager* Live2DManager = [LAppLive2DManager getInstance];
-    [Live2DManager SetViewMatrix:_viewMatrix];
+    CubismMatrix44 studioMatrix;
+    studioMatrix.SetMatrix(_viewMatrix->GetArray());
+    if (self.studioMirrored) studioMatrix.ScaleRelative(-1, 1);
+    [Live2DManager SetViewMatrix:&studioMatrix];
+    CFTimeInterval updateStart = CACurrentMediaTime();
     [Live2DManager onUpdate:commandBuffer currentDrawable:currentDrawable depthTexture:_depthTexture];
+    _studioUpdateMs = (CACurrentMediaTime() - updateStart) * 1000;
+    if (_studioFrameStart == 0) _studioFrameStart = updateStart;
+    _studioFrames++;
+    if (updateStart - _studioFrameStart >= 0.5) {
+        _studioFps = _studioFrames / (updateStart - _studioFrameStart);
+        _studioFrames = 0;
+        _studioFrameStart = updateStart;
+        if (_studioAutoQuality) {
+            MetalUIView* view = (MetalUIView*)self.view;
+            CGFloat scale = view.studioResolutionScale;
+            CGFloat maxScale = self.view.window.screen.nativeScale ?: self.traitCollection.displayScale;
+            CGFloat next = _studioFps < 48 ? MAX(1.0, scale - 0.25) : (_studioFps > 58 ? MIN(maxScale, scale + 0.1) : scale);
+            if (fabs(next - scale) > 0.01) {
+                // Resize after this frame has been committed.
+                dispatch_async(dispatch_get_main_queue(), ^{ view.studioResolutionScale = next; [view resizeDrawable:next]; });
+            }
+        }
+    }
 
     [commandBuffer presentDrawable:currentDrawable];
     [commandBuffer commit];
@@ -601,7 +664,9 @@ using namespace LAppDefine;
 
 - (MTLViewport) getSafeAreaViewport
 {
-    CGFloat scale = self.traitCollection.displayScale;
+    CGFloat scale = self.view.bounds.size.width > 0
+        ? ((MetalUIView*)self.view).metalLayer.drawableSize.width / self.view.bounds.size.width
+        : self.traitCollection.displayScale;
 #if TARGET_OS_MACCATALYST
     MTLViewport viewport =  {0,0,
                              self.view.frame.size.width * scale,

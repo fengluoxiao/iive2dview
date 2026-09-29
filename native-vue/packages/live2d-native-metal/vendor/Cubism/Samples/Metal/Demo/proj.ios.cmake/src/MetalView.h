@@ -25,6 +25,7 @@
 @property (nonatomic, nonnull, readonly) CAMetalLayer *metalLayer;
 
 @property (nonatomic, getter=isPaused) BOOL paused;
+@property (nonatomic) CGFloat studioResolutionScale;
 
 @property (nonatomic, nullable) id<MetalViewDelegate> delegate;
 

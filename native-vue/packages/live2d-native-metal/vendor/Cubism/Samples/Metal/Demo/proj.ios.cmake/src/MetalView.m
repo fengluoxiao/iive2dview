@@ -58,6 +58,7 @@
 
 - (void)resizeDrawable:(CGFloat)scaleFactor
 {
+    if (self.studioResolutionScale > 0) scaleFactor = self.studioResolutionScale;
     CGSize newSize = self.bounds.size;
     newSize.width *= scaleFactor;
     newSize.height *= scaleFactor;

@@ -84,6 +84,11 @@
 
 - (void)adjustViewScaleAtPoint:(CGPoint)point factor:(CGFloat)factor;
 - (void)translateViewBy:(CGPoint)translation;
+- (void)setStudioScale:(CGFloat)scale;
+- (void)resetStudioPosition;
+- (NSDictionary*)studioViewState;
+@property (nonatomic) BOOL studioMirrored;
+- (void)setStudioQuality:(NSString*)quality;
 
 /**
  * @brief デバイスを取得する。

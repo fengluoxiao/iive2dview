@@ -9,9 +9,29 @@
 @property (nonatomic, strong) NSNumber* mouthOpen;
 @property (nonatomic, strong) NSNumber* importRequest;
 @property (nonatomic, strong) NSNumber* resetRequest;
+@property (nonatomic, copy) RCTDirectEventBlock onStudioEvent;
+@property (nonatomic, copy) NSDictionary* studioCommand;
 @end
 
 @implementation ExpoLive2DHostView
+
+- (void)setOnStudioEvent:(RCTDirectEventBlock)event
+{
+    _onStudioEvent = [event copy];
+    __weak ExpoLive2DHostView* weakSelf = self;
+    self.studioEvent = ^(NSDictionary* state) {
+        ExpoLive2DHostView* host = weakSelf;
+        if (host.onStudioEvent) host.onStudioEvent(state);
+    };
+}
+
+- (void)setStudioCommand:(NSDictionary*)command
+{
+    _studioCommand = [command copy];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self performStudioCommand:command];
+    });
+}
 
 - (void)setAngleX:(NSNumber*)value
 {
@@ -82,5 +102,7 @@ RCT_EXPORT_VIEW_PROPERTY(eyeOpen, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(mouthOpen, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(importRequest, NSNumber)
 RCT_EXPORT_VIEW_PROPERTY(resetRequest, NSNumber)
+RCT_EXPORT_VIEW_PROPERTY(studioCommand, NSDictionary)
+RCT_EXPORT_VIEW_PROPERTY(onStudioEvent, RCTDirectEventBlock)
 
 @end

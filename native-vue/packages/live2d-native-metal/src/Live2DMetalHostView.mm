@@ -51,6 +51,12 @@ void InitializeCubismOnce()
     UIPanGestureRecognizer* _panGesture;
     CGFloat _lastPinchScale;
     BOOL _rendererAttachedToHost;
+    NSArray* _studioCatalog;
+    NSDictionary* _studioMetadata;
+    NSString* _studioModelId;
+    NSString* _studioDirection;
+    NSString* _studioStatus;
+    BOOL _studioBlink;
 }
 
 - (void)didMoveToWindow
@@ -89,6 +95,9 @@ void InitializeCubismOnce()
         _metalView.userInteractionEnabled = NO;
         [self addSubview:_metalView];
         _parameterValues = [[NSMutableDictionary alloc] init];
+        _studioDirection = [@"C" copy];
+        _studioStatus = [@"导入文件夹或 ZIP，开始预览" copy];
+        _studioBlink = YES;
         _pinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinch:)];
         _pinchGesture.cancelsTouchesInView = YES;
         _pinchGesture.delegate = self;
@@ -157,10 +166,150 @@ void InitializeCubismOnce()
 
 - (void)resetFace
 {
-    [self setParameterValue:0.0f forId:@"ParamAngleX"];
-    [self setParameterValue:1.0f forId:@"ParamEyeLOpen"];
-    [self setParameterValue:1.0f forId:@"ParamEyeROpen"];
-    [self setParameterValue:0.0f forId:@"ParamMouthOpenY"];
+    [_parameterValues removeAllObjects];
+    LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
+    if (model) model->ClearExternalParameters();
+}
+
+- (NSURL*)studioLibraryURL
+{
+    return [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
+            URLByAppendingPathComponent:@"Live2DModels" isDirectory:YES];
+}
+
+- (void)studioSetStatus:(NSString*)message
+{
+    [_studioStatus release];
+    _studioStatus = [message copy];
+}
+
+- (void)studioScanLibrary
+{
+    NSURL* root = [self studioLibraryURL];
+    NSMutableArray* catalog = [NSMutableArray array];
+    NSDirectoryEnumerator* files = [[NSFileManager defaultManager] enumeratorAtURL:root includingPropertiesForKeys:nil
+        options:NSDirectoryEnumerationSkipsHiddenFiles errorHandler:nil];
+    for (NSURL* url in files) {
+        if (![url.lastPathComponent.lowercaseString hasSuffix:@".model3.json"]) continue;
+        NSString* relative = [url.path substringFromIndex:root.path.length + 1];
+        NSArray* parts = relative.pathComponents;
+        NSString* outfit = [url.lastPathComponent substringToIndex:url.lastPathComponent.length - 12];
+        // The first component is our import UUID, never expose it as a name.
+        NSString* character = parts.count > 2 ? parts[1] : outfit;
+        [catalog addObject:@{@"id": relative, @"character": character, @"outfit": outfit}];
+    }
+    [_studioCatalog release];
+    _studioCatalog = [[catalog sortedArrayUsingComparator:^NSComparisonResult(NSDictionary* a, NSDictionary* b) {
+        return [a[@"id"] localizedStandardCompare:b[@"id"]];
+    }] copy];
+}
+
+- (void)studioConfigureIdle
+{
+    LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
+    if (!model) return;
+    NSDictionary* groups = _studioMetadata[@"motions"];
+    NSString* idleGroup = nil;
+    for (NSString* group in groups) {
+        if ([group.lowercaseString isEqualToString:@"idle"]) { idleGroup = group; break; }
+    }
+    std::vector<int> matches, all;
+    NSArray* entries = groups[idleGroup ?: @""];
+    for (NSUInteger i = 0; i < entries.count; i++) {
+        all.push_back((int)i);
+        NSString* name = entries[i][@"Name"] ?: [entries[i][@"File"] stringByDeletingPathExtension];
+        if ([name hasSuffix:[@"_" stringByAppendingString:_studioDirection]]) matches.push_back((int)i);
+    }
+    model->ConfigureIdle((idleGroup ?: @"").UTF8String, matches.empty() ? all : matches);
+    model->SetBlinkEnabled(_studioBlink);
+}
+
+- (void)studioLoadModel:(NSString*)identifier
+{
+    NSDictionary* entry = nil;
+    for (NSDictionary* item in _studioCatalog) {
+        if ([item[@"id"] isEqual:identifier]) { entry = item; break; }
+    }
+    if (!entry) { [self studioSetStatus:@"找不到该模型，请重新导入"]; return; }
+    NSURL* url = [[self studioLibraryURL] URLByAppendingPathComponent:identifier];
+    NSData* data = [NSData dataWithContentsOfURL:url];
+    id json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![json isKindOfClass:NSDictionary.class] || ![json[@"FileReferences"] isKindOfClass:NSDictionary.class]) {
+        [self studioSetStatus:@"模型配置无效，无法读取 model3.json"]; return;
+    }
+    NSString* directory = [url.path.stringByDeletingLastPathComponent stringByAppendingString:@"/"];
+    LAppLive2DManager* manager = [LAppLive2DManager getInstance];
+    if (![manager loadModelAtDirectory:directory.UTF8String fileName:url.lastPathComponent.UTF8String]) {
+        [self studioSetStatus:@"模型加载失败，请检查 moc3 和贴图文件"]; return;
+    }
+    [self resetFace];
+    [_renderer resetStudioPosition];
+    [_renderer setStudioScale:1];
+    [_studioModelId release];
+    _studioModelId = [identifier copy];
+    [_studioMetadata release];
+    NSDictionary* refs = json[@"FileReferences"];
+    _studioMetadata = [@{@"motions": refs[@"Motions"] ?: @{}, @"expressions": refs[@"Expressions"] ?: @[],
+                        @"drawables": @([manager getModel:0]->GetModel()->GetDrawableCount())} copy];
+    [self studioConfigureIdle];
+    [[NSUserDefaults standardUserDefaults] setObject:identifier forKey:@"studioLastModel"];
+    [self studioSetStatus:[NSString stringWithFormat:@"%@ 已就绪", entry[@"outfit"]]];
+}
+
+- (void)studioEmitState
+{
+    if (!self.studioEvent) return;
+    self.studioEvent(@{@"models": _studioCatalog ?: @[], @"selectedModelId": _studioModelId ?: @"",
+        @"metadata": _studioMetadata ?: @{}, @"view": [_renderer studioViewState],
+        @"status": _studioStatus ?: @"", @"direction": _studioDirection, @"blink": @(_studioBlink)});
+}
+
+- (void)performStudioCommand:(NSDictionary*)command
+{
+    NSString* type = command[@"type"];
+    LAppModel* model = [[LAppLive2DManager getInstance] getModel:0];
+    if ([type isEqual:@"initialize"]) {
+        [self studioScanLibrary];
+        NSString* last = [[NSUserDefaults standardUserDefaults] stringForKey:@"studioLastModel"];
+        if (!_studioModelId && _studioCatalog.count) [self studioLoadModel:last ?: _studioCatalog[0][@"id"]];
+    } else if ([type isEqual:@"import"]) {
+        [self presentModelImporter];
+    } else if ([type isEqual:@"selectModel"]) {
+        [self studioLoadModel:command[@"id"]];
+    } else if ([type isEqual:@"parameter"]) {
+        for (NSString* parameter in command[@"ids"]) [self setParameterValue:[command[@"value"] floatValue] forId:parameter];
+    } else if ([type isEqual:@"resetFace"]) {
+        [self resetFace];
+    } else if ([type isEqual:@"direction"]) {
+        [_studioDirection release];
+        _studioDirection = [command[@"value"] copy];
+        [self studioConfigureIdle];
+        if (model) model->StopStudioMotion();
+    } else if ([type isEqual:@"blink"]) {
+        _studioBlink = [command[@"value"] boolValue];
+        if (model) model->SetBlinkEnabled(_studioBlink);
+    } else if ([type isEqual:@"motion"] && model) {
+        NSString* group = command[@"group"];
+        NSArray* entries = _studioMetadata[@"motions"][group];
+        NSInteger index = [command[@"index"] integerValue];
+        if (index >= 0 && index < (NSInteger)entries.count) model->StartMotion(group.UTF8String, (int)index, LAppDefine::PriorityForce);
+    } else if ([type isEqual:@"expression"] && model) {
+        NSInteger index = [command[@"index"] integerValue];
+        NSArray* entries = _studioMetadata[@"expressions"];
+        if (index < 0) model->ClearStudioExpression();
+        else if (index < (NSInteger)entries.count) model->SetExpression([entries[index][@"Name"] UTF8String]);
+    } else if ([type isEqual:@"scale"]) {
+        [_renderer setStudioScale:[command[@"value"] doubleValue]];
+    } else if ([type isEqual:@"mirror"]) {
+        _renderer.studioMirrored = [command[@"value"] boolValue];
+    } else if ([type isEqual:@"quality"]) {
+        [_renderer setStudioQuality:command[@"value"]];
+    } else if ([type isEqual:@"reset"]) {
+        [self resetFace];
+        [_renderer resetStudioPosition];
+        if (model) { model->StopStudioMotion(); model->SetRandomExpression(); }
+    }
+    [self studioEmitState];
 }
 
 - (void)presentModelImporter
@@ -291,26 +440,21 @@ void InitializeCubismOnce()
     }
     if (!imported) {
         [fileManager removeItemAtURL:destination error:nil];
+        [self studioSetStatus:@"导入失败，请确认文件已下载且允许访问"]; [self studioEmitState];
         return;
     }
 
     NSURL* modelURL = [self firstModelURLInDirectory:destination];
     if (modelURL == nil) {
         [fileManager removeItemAtURL:destination error:nil];
+        [self studioSetStatus:@"未找到 .model3.json，请导入完整模型目录或 ZIP"]; [self studioEmitState];
         return;
     }
     [_importDirectory release];
     _importDirectory = [destination retain];
-    NSString* directory = [modelURL.path.stringByDeletingLastPathComponent stringByAppendingString:@"/"];
-    LAppLive2DManager* manager = [LAppLive2DManager getInstance];
-    [manager loadModelAtDirectory:directory.UTF8String fileName:modelURL.lastPathComponent.UTF8String];
-    // setParameterValue writes back to _parameterValues. Enumerate a snapshot
-    // so restoring controls cannot mutate the collection being enumerated.
-    NSDictionary<NSString*, NSNumber*>* savedParameters = [_parameterValues copy];
-    for (NSString* parameterId in savedParameters) {
-        [self setParameterValue:[[savedParameters objectForKey:parameterId] floatValue] forId:parameterId];
-    }
-    [savedParameters release];
+    [self studioScanLibrary];
+    [self studioLoadModel:[modelURL.path substringFromIndex:[self studioLibraryURL].path.length + 1]];
+    [self studioEmitState];
 }
 
 - (NSURL*)firstModelURLInDirectory:(NSURL*)directory
@@ -339,6 +483,12 @@ void InitializeCubismOnce()
     [_pinchGesture release];
     [_panGesture release];
     [_parameterValues release];
+    [_studioCatalog release];
+    [_studioMetadata release];
+    [_studioModelId release];
+    [_studioDirection release];
+    [_studioStatus release];
+    [_studioEvent release];
     [_importDirectory release];
     [_textureManager release];
     [_renderer release];

@@ -264,8 +264,15 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         {
             _eyeBlink = CubismEyeBlink::Create(_modelSetting);
 
-            CubismEyeBlinkUpdater* eyeBlink = CSM_NEW CubismEyeBlinkUpdater(_motionUpdated, *_eyeBlink);
-            _updateScheduler.AddUpdatableList(eyeBlink);
+            // The host controls blink independently; update it explicitly.
+        }
+        else
+        {
+            _eyeBlink = CubismEyeBlink::Create();
+            csmVector<CubismIdHandle> ids;
+            ids.PushBack(CubismFramework::GetIdManager()->GetId("ParamEyeLOpen"));
+            ids.PushBack(CubismFramework::GetIdManager()->GetId("ParamEyeROpen"));
+            _eyeBlink->SetParameterIds(ids);
         }
     }
 
@@ -444,7 +451,11 @@ void LAppModel::Update()
     if (_motionManager->IsFinished())
     {
         // モーションの再生がない場合、待機モーションの中からランダムで再生する
-        StartRandomMotion(MotionGroupIdle, PriorityIdle);
+        if (!_studioIdleIndices.empty())
+        {
+            const int index = _studioIdleIndices[_studioIdleCursor++ % _studioIdleIndices.size()];
+            StartMotion(_studioIdleGroup.c_str(), index, PriorityIdle);
+        }
     }
     else
     {
@@ -456,6 +467,10 @@ void LAppModel::Update()
     // 不透明度
     _opacity = _model->GetModelOpacity();
 
+    if (_blinkEnabled && _eyeBlink != NULL)
+    {
+        _eyeBlink->UpdateParameters(_model, deltaTimeSeconds);
+    }
     _updateScheduler.OnLateUpdate(_model, deltaTimeSeconds);
 
     // Apply editor values after motion, eye blink, and physics have updated
@@ -475,6 +490,23 @@ void LAppModel::SetExternalParameterValue(CubismIdHandle parameterId, csmFloat32
     {
         _externalParameterValues[parameterId] = value;
     }
+}
+
+void LAppModel::ConfigureIdle(const char* group, const std::vector<int>& indices)
+{
+    _studioIdleGroup = group;
+    _studioIdleIndices = indices;
+    _studioIdleCursor = 0;
+}
+
+void LAppModel::StopStudioMotion()
+{
+    _motionManager->StopAllMotions();
+}
+
+void LAppModel::ClearStudioExpression()
+{
+    _expressionManager->StopAllMotions();
 }
 
 CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt32 no, csmInt32 priority, ACubismMotion::FinishedMotionCallback onFinishedMotionHandler, ACubismMotion::BeganMotionCallback onBeganMotionHandler)
@@ -522,6 +554,11 @@ CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt
         motion->SetBeganMotionHandler(onBeganMotionHandler);
         motion->SetFinishedMotionHandler(onFinishedMotionHandler);
     }
+
+    if (motion == NULL) return InvalidMotionQueueEntryHandleValue;
+    // Let the host's sequential idle scheduler advance even when a file has
+    // Meta.Loop enabled. The next idle starts when this clip completes.
+    motion->SetIsLoop(false);
 
     //voice
     csmString voice = _modelSetting->GetMotionSoundFileName(group, no);

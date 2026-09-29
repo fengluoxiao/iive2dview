@@ -524,9 +524,14 @@ Csm::csmString GetPath(CFURLRef url)
         return false;
     }
 
+    LAppModel* candidate = new LAppModel();
+    candidate->LoadAssets(directory, fileName);
+    if (candidate->GetModel() == NULL) {
+        delete candidate;
+        return false;
+    }
     [self releaseAllModel];
-    _models.PushBack(new LAppModel());
-    _models[0]->LoadAssets(directory, fileName);
+    _models.PushBack(candidate);
     return true;
 }
 
