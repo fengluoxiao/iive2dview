@@ -42,7 +42,8 @@ function Studio() {
   const [picker, setPicker] = useState<'character' | 'outfit' | null>(null);
   const selected = state.models.find(m => m.id === state.selectedModelId);
   const groups = Object.entries(state.metadata.motions ?? {}).filter(([g, entries]) => !['idle', 'default'].includes(g.toLowerCase()) && entries.length);
-  const live = useRef({ state, groups }); live.current = { state, groups };
+  const live = useRef({ state, groups });
+  useEffect(() => { live.current = { state, groups }; }, [state, groups]);
   useEffect(() => { const timer = setInterval(() => send({ type: 'state' }), 500); return () => clearInterval(timer); }, [send]);
   useEffect(() => {
     if (!autoplay) return; let cursor = 0;

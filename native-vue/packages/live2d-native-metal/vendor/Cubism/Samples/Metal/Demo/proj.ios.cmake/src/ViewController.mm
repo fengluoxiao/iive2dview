@@ -113,6 +113,7 @@ using namespace LAppDefine;
     view.delegate = self;
 
     view.metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    view.metalLayer.framebufferOnly = NO;
     view.opaque = NO;
     view.metalLayer.opaque = NO;
     view.backgroundColor = UIColor.clearColor;
@@ -643,11 +644,13 @@ using namespace LAppDefine;
     }
 
     [commandBuffer presentDrawable:currentDrawable];
+    if (self.studioFrameHandler) self.studioFrameHandler(currentDrawable.texture, commandBuffer);
     [commandBuffer commit];
 }
 
 - (void)dealloc
 {
+    [_studioFrameHandler release];
     [self releaseView];
     [super dealloc];
 }

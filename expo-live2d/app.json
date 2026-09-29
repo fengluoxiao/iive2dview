@@ -5,11 +5,12 @@
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fengluo.live2dmetal",
-      "deploymentTarget": "18.0"
+      "deploymentTarget": "18.0",
+      "infoPlist": { "UIBackgroundModes": ["audio"], "CADisableMinimumFrameDurationOnPhone": true }
     },
     "android": {
       "adaptiveIcon": {

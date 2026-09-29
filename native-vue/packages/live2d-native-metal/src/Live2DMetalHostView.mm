@@ -7,6 +7,7 @@
 #import "LAppPal.h"
 #import "LAppTextureManager.h"
 #import "Live2DMetalContext.h"
+#import "Live2DStudioMedia.h"
 #import <SSZipArchive/SSZipArchive.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <CubismFramework.hpp>
@@ -57,6 +58,7 @@ void InitializeCubismOnce()
     NSString* _studioDirection;
     NSString* _studioStatus;
     BOOL _studioBlink;
+    Live2DStudioMedia* _studioMedia;
 }
 
 - (void)didMoveToWindow
@@ -94,6 +96,14 @@ void InitializeCubismOnce()
         // menu hit testing is intentionally disabled for this embedded renderer.
         _metalView.userInteractionEnabled = NO;
         [self addSubview:_metalView];
+        _studioMedia = [[Live2DStudioMedia alloc] init];
+        [self.layer insertSublayer:_studioMedia.displayLayer atIndex:0];
+        Live2DStudioMedia* media = _studioMedia;
+        _renderer.studioFrameHandler = ^(id<MTLTexture> texture, id<MTLCommandBuffer> buffer) {
+            [media captureTexture:texture commandBuffer:buffer];
+        };
+        __unsafe_unretained Live2DMetalHostView* host = self;
+        _studioMedia.statusHandler = ^(NSString* message) { [host studioSetStatus:message]; [host studioEmitState]; };
         _parameterValues = [[NSMutableDictionary alloc] init];
         _studioDirection = [@"C" copy];
         _studioStatus = [@"导入文件夹或 ZIP，开始预览" copy];
@@ -127,6 +137,12 @@ void InitializeCubismOnce()
     }
     CubismIdHandle parameter = CubismFramework::GetIdManager()->GetId(parameterId.UTF8String);
     model->SetExternalParameterValue(parameter, value);
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    _studioMedia.displayLayer.frame = self.bounds;
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer*)gesture
@@ -304,6 +320,10 @@ void InitializeCubismOnce()
         _renderer.studioMirrored = [command[@"value"] boolValue];
     } else if ([type isEqual:@"quality"]) {
         [_renderer setStudioQuality:command[@"value"]];
+    } else if ([type isEqual:@"export"]) {
+        [_studioMedia requestExportFrom:[self activePresenter]];
+    } else if ([type isEqual:@"pip"]) {
+        [_studioMedia togglePictureInPicture];
     } else if ([type isEqual:@"reset"]) {
         [self resetFace];
         [_renderer resetStudioPosition];
@@ -474,6 +494,9 @@ void InitializeCubismOnce()
 
 - (void)dealloc
 {
+    [_studioMedia invalidate];
+    _renderer.studioFrameHandler = nil;
+    [_studioMedia release];
     Live2DMetalClearHost(_renderer);
     if (_rendererAttachedToHost) {
         [_renderer willMoveToParentViewController:nil];

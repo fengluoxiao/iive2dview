@@ -88,6 +88,7 @@
 - (void)resetStudioPosition;
 - (NSDictionary*)studioViewState;
 @property (nonatomic) BOOL studioMirrored;
+@property (nonatomic, copy) void (^studioFrameHandler)(id<MTLTexture> texture, id<MTLCommandBuffer> commandBuffer);
 - (void)setStudioQuality:(NSString*)quality;
 
 /**
