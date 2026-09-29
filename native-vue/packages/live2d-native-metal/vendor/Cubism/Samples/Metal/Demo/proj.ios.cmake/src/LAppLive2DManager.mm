@@ -524,13 +524,15 @@ Csm::csmString GetPath(CFURLRef url)
         return false;
     }
 
+    // Texture names are cached by the sample texture manager. Release the
+    // previous model before loading another that may share those textures.
+    [self releaseAllModel];
     LAppModel* candidate = new LAppModel();
     candidate->LoadAssets(directory, fileName);
     if (candidate->GetModel() == NULL) {
         delete candidate;
         return false;
     }
-    [self releaseAllModel];
     _models.PushBack(candidate);
     return true;
 }

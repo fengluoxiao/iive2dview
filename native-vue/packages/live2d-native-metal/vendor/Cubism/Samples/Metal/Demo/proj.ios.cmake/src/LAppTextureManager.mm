@@ -60,12 +60,13 @@
     }
 
     Csm::csmInt32 textureId;
-    int width, height, channels;
+    int width = 0, height = 0, channels = 0;
     unsigned int size;
     unsigned char* png;
     unsigned char* address;
 
     address = LAppPal::LoadFileAsBytes(fileName, &size);
+    if (address == NULL || size == 0) return NULL;
 
     // png情報を取得する
     png = stbi_load_from_memory(
@@ -75,6 +76,11 @@
                                 &height,
                                 &channels,
                                 STBI_rgb_alpha);
+    if (png == NULL || width <= 0 || height <= 0) {
+        stbi_image_free(png);
+        LAppPal::ReleaseBytes(address);
+        return NULL;
+    }
 
     {
 #ifdef PREMULTIPLIED_ALPHA_ENABLE
@@ -108,6 +114,11 @@
 
     // Create the texture from the device by using the descriptor
     id<MTLTexture> texture = [device newTextureWithDescriptor:textureDescriptor];
+    if (texture == nil) {
+        stbi_image_free(png);
+        LAppPal::ReleaseBytes(address);
+        return NULL;
+    }
 
     // Calculate the number of bytes per row in the image.
     NSUInteger bytesPerRow = 4 * width;

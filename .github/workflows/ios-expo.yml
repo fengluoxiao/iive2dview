@@ -32,7 +32,9 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: |
+          npm install --global npm@11.6.2
+          npm ci
       - name: Apply iOS 26 Swift compatibility patch for ExpoModulesJSI
         run: node scripts/patch-expo-modules-jsi-ios26.cjs
       - name: Generate the Expo iOS project

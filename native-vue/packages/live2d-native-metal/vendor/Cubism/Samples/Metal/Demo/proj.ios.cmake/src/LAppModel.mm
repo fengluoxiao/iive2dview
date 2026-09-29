@@ -84,6 +84,8 @@ LAppModel::~LAppModel()
     ReleaseMotions();
     ReleaseExpressions();
 
+    if (_modelSetting == NULL) return;
+
     for (csmInt32 i = 0; i < _modelSetting->GetMotionGroupCount(); i++)
     {
         const csmChar* group = _modelSetting->GetMotionGroupName(i);
@@ -188,9 +190,11 @@ void LAppModel::SetupModel(ICubismModelSetting* setting)
         }
 
         buffer = CreateBuffer(path.GetRawString(), &size);
-        LoadModel(buffer, size, _mocConsistency);
+        if (buffer != NULL && size > 0) LoadModel(buffer, size, _mocConsistency);
         DeleteBuffer(buffer, path.GetRawString());
     }
+
+    if (_model == NULL) return;
 
     //Expression
     if (_modelSetting->GetExpressionCount() > 0)
@@ -558,7 +562,7 @@ CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt
     if (motion == NULL) return InvalidMotionQueueEntryHandleValue;
     // Let the host's sequential idle scheduler advance even when a file has
     // Meta.Loop enabled. The next idle starts when this clip completes.
-    motion->SetIsLoop(false);
+    motion->SetLoop(false);
 
     //voice
     csmString voice = _modelSetting->GetMotionSoundFileName(group, no);
