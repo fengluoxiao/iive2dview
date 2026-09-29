@@ -81,12 +81,25 @@ for (const [filePath, originalDeclaration, patchedDeclaration] of uncheckedSenda
 
 const packageManifest = path.join(path.dirname(packageRoot), 'Package.swift');
 const manifestSource = fs.readFileSync(packageManifest, 'utf8');
-const patchedManifest = manifestSource.replace(
-  'swiftLanguageModes: [.v6],',
+const restoredSwift6Manifest = manifestSource.replace(
   'swiftLanguageModes: [.v5],',
+  'swiftLanguageModes: [.v6],',
 );
-if (patchedManifest === manifestSource && !manifestSource.includes('swiftLanguageModes: [.v5],')) {
-  throw new Error('Unable to apply the Swift language-mode compatibility patch');
+const patchedManifest = restoredSwift6Manifest
+  .replace(
+    '        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),\n',
+    '',
+  )
+  .replace(
+    '        .enableUpcomingFeature("InferIsolatedConformances"),\n',
+    '',
+  );
+if (
+  !patchedManifest.includes('swiftLanguageModes: [.v6],') ||
+  patchedManifest.includes('.enableUpcomingFeature("NonisolatedNonsendingByDefault")') ||
+  patchedManifest.includes('.enableUpcomingFeature("InferIsolatedConformances")')
+) {
+  throw new Error('Unable to apply the Swift 6 concurrency compatibility patch');
 }
 if (patchedManifest !== manifestSource) {
   fs.writeFileSync(packageManifest, patchedManifest);
