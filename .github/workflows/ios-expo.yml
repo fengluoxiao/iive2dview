@@ -97,6 +97,7 @@ jobs:
           test "$app_count" = 1
           app="$(dirname "$app_info_plists")"
           test -f "$app/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$app/Info.plist")" = true
           mkdir -p artifacts/Payload
           cp -R "$app" artifacts/Payload/
           (cd artifacts && zip -qry live2d-expo-metal-unsigned.ipa Payload)

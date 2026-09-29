@@ -10,7 +10,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.fengluo.live2dmetal",
       "deploymentTarget": "18.0",
-      "infoPlist": { "UIBackgroundModes": ["audio"], "CADisableMinimumFrameDurationOnPhone": true }
+      "infoPlist": { "UIBackgroundModes": ["audio"], "CADisableMinimumFrameDurationOnPhone": true, "LSSupportsOpeningDocumentsInPlace": true }
     },
     "android": {
       "adaptiveIcon": {
