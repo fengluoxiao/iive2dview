@@ -458,8 +458,23 @@ void LAppModel::Update()
 
     _updateScheduler.OnLateUpdate(_model, deltaTimeSeconds);
 
+    // Apply editor values after motion, eye blink, and physics have updated
+    // the model so they remain visible beyond a single frame.
+    for (const auto& parameter : _externalParameterValues)
+    {
+        _model->SetParameterValue(parameter.first, parameter.second);
+    }
+
     _model->Update();
 
+}
+
+void LAppModel::SetExternalParameterValue(CubismIdHandle parameterId, csmFloat32 value)
+{
+    if (parameterId != NULL)
+    {
+        _externalParameterValues[parameterId] = value;
+    }
 }
 
 CubismMotionQueueEntryHandle LAppModel::StartMotion(const csmChar* group, csmInt32 no, csmInt32 priority, ACubismMotion::FinishedMotionCallback onFinishedMotionHandler, ACubismMotion::BeganMotionCallback onBeganMotionHandler)

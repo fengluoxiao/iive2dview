@@ -82,6 +82,8 @@
  */
 - (float)transformScreenY:(float)deviceY;
 
+- (void)adjustViewScaleAtPoint:(CGPoint)point factor:(CGFloat)factor;
+
 /**
  * @brief デバイスを取得する。
  *

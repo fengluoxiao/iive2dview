@@ -470,6 +470,23 @@ using namespace LAppDefine;
     return deviceY * -1 + height;
 }
 
+- (void)adjustViewScaleAtPoint:(CGPoint)point factor:(CGFloat)factor
+{
+    if (_viewMatrix == NULL || _deviceToScreen == NULL || factor <= 0.0f)
+    {
+        return;
+    }
+
+#if !TARGET_OS_MACCATALYST
+    UIEdgeInsets insets = self.view.safeAreaInsets;
+    point.x -= insets.left;
+    point.y -= insets.top;
+#endif
+    const float x = [self transformScreenX:point.x];
+    const float y = [self transformScreenY:point.y];
+    _viewMatrix->AdjustScale(x, y, factor);
+}
+
 - (id <MTLDevice>)getDevice
 {
     return _device;

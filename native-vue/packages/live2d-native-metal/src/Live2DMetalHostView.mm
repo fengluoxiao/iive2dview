@@ -43,6 +43,9 @@ void InitializeCubismOnce()
     UIView* _metalView;
     LAppTextureManager* _textureManager;
     NSURL* _importDirectory;
+    NSMutableDictionary<NSString*, NSNumber*>* _parameterValues;
+    UIPinchGestureRecognizer* _pinchGesture;
+    CGFloat _lastPinchScale;
     BOOL _rendererAttachedToHost;
 }
 
@@ -81,6 +84,10 @@ void InitializeCubismOnce()
         // menu hit testing is intentionally disabled for this embedded renderer.
         _metalView.userInteractionEnabled = NO;
         [self addSubview:_metalView];
+        _parameterValues = [[NSMutableDictionary alloc] init];
+        _pinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinch:)];
+        _pinchGesture.cancelsTouchesInView = YES;
+        [self addGestureRecognizer:_pinchGesture];
         // The embedded app imports its own models and does not bundle the
         // Cubism demo's background/control PNGs. Avoid initializing those
         // optional demo sprites during startup.
@@ -90,13 +97,32 @@ void InitializeCubismOnce()
 
 - (void)setParameterValue:(float)value forId:(NSString*)parameterId
 {
+    if (parameterId == nil) {
+        return;
+    }
+    [_parameterValues setObject:@(value) forKey:parameterId];
     LAppLive2DManager* manager = [LAppLive2DManager getInstance];
     LAppModel* model = [manager getModel:0];
-    if (model == nil) {
+    if (model == nil || model->GetModel() == NULL) {
         return;
     }
     CubismIdHandle parameter = CubismFramework::GetIdManager()->GetId(parameterId.UTF8String);
-    model->GetModel()->SetParameterValue(parameter, value);
+    model->SetExternalParameterValue(parameter, value);
+}
+
+- (void)handlePinch:(UIPinchGestureRecognizer*)gesture
+{
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        _lastPinchScale = gesture.scale;
+        return;
+    }
+    if (gesture.state != UIGestureRecognizerStateChanged || _lastPinchScale <= 0.0f) {
+        return;
+    }
+
+    const CGFloat factor = gesture.scale / _lastPinchScale;
+    [_renderer adjustViewScaleAtPoint:[gesture locationInView:_metalView] factor:factor];
+    _lastPinchScale = gesture.scale;
 }
 
 - (void)resetFace
@@ -122,8 +148,7 @@ void InitializeCubismOnce()
                                                      style:UIAlertActionStyleDefault
                                                    handler:^(UIAlertAction* action) {
         (void)action;
-        UTType* folderType = [UTType typeWithIdentifier:@"public.folder"];
-        [self presentModelPickerForContentTypes:(folderType == nil ? @[] : @[folderType])];
+        [self presentFolderImporter];
     }]];
     [sourcePicker addAction:[UIAlertAction actionWithTitle:@"Import ZIP"
                                                      style:UIAlertActionStyleDefault
@@ -176,6 +201,25 @@ void InitializeCubismOnce()
     [picker release];
 }
 
+- (void)presentFolderImporter
+{
+    // initForOpeningContentTypes asserts when passed public.folder. The
+    // legacy import picker is the UIKit path that accepts a folder UTI.
+    UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
+        initWithDocumentTypes:@[@"public.folder"]
+        inMode:UIDocumentPickerModeImport];
+    picker.delegate = self;
+    picker.modalPresentationStyle = UIModalPresentationFormSheet;
+
+    UIViewController* presenter = [self activePresenter];
+    if (presenter == nil) {
+        [picker release];
+        return;
+    }
+    [presenter presentViewController:picker animated:YES completion:nil];
+    [picker release];
+}
+
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls
 {
     NSURL* selectedURL = urls.firstObject;
@@ -211,6 +255,9 @@ void InitializeCubismOnce()
     NSString* directory = [modelURL.path.stringByDeletingLastPathComponent stringByAppendingString:@"/"];
     LAppLive2DManager* manager = [LAppLive2DManager getInstance];
     [manager loadModelAtDirectory:directory.UTF8String fileName:modelURL.lastPathComponent.UTF8String];
+    for (NSString* parameterId in _parameterValues) {
+        [self setParameterValue:[[_parameterValues objectForKey:parameterId] floatValue] forId:parameterId];
+    }
 }
 
 - (NSURL*)firstModelURLInDirectory:(NSURL*)directory
@@ -236,6 +283,8 @@ void InitializeCubismOnce()
         [_renderer removeFromParentViewController];
     }
     [_metalView removeFromSuperview];
+    [_pinchGesture release];
+    [_parameterValues release];
     [_importDirectory release];
     [_textureManager release];
     [_renderer release];

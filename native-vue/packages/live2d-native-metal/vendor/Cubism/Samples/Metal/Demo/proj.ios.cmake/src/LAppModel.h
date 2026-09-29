@@ -13,6 +13,7 @@
 #import <ICubismModelSetting.hpp>
 #import <Type/csmRectF.hpp>
 #import <Rendering/Metal/CubismRenderTarget_Metal.hpp>
+#include <map>
 
 /**
  * @brief ユーザーが実際に使用するモデルの実装クラス<br>
@@ -50,6 +51,8 @@ public:
      *
      */
     void Update();
+
+    void SetExternalParameterValue(Csm::CubismIdHandle parameterId, Csm::csmFloat32 value);
 
     /**
      * @brief   モデルを描画する処理。モデルを描画する空間のView-Projection行列を渡す。
@@ -178,6 +181,7 @@ private:
 
     Csm::ICubismModelSetting* _modelSetting; ///< モデルセッティング情報
     Csm::csmString _modelHomeDir; ///< モデルセッティングが置かれたディレクトリ
+    std::map<Csm::CubismIdHandle, Csm::csmFloat32> _externalParameterValues;
     Csm::csmFloat32 _userTimeSeconds; ///< デルタ時間の積算値[秒]
     Csm::csmVector<Csm::CubismIdHandle> _eyeBlinkIds; ///< モデルに設定されたまばたき機能用パラメータID
     Csm::csmVector<Csm::CubismIdHandle> _lipSyncIds; ///< モデルに設定されたリップシンク機能用パラメータID
