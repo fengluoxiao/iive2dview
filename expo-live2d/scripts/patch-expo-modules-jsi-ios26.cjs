@@ -125,6 +125,21 @@ if (patchedPromise === promiseSource && promiseSource.includes('@JavaScriptActor
 if (patchedPromise !== promiseSource) {
   fs.writeFileSync(promiseFile, patchedPromise);
 }
+
+const promiseAfterActorPatch = fs.readFileSync(promiseFile, 'utf8');
+const patchedPromiseProtocol = promiseAfterActorPatch.replace(
+  'private final class LongLivedState: LongLivedObject',
+  'private final class LongLivedState: @preconcurrency LongLivedObject',
+);
+if (
+  patchedPromiseProtocol === promiseAfterActorPatch &&
+  !promiseAfterActorPatch.includes('private final class LongLivedState: @preconcurrency LongLivedObject')
+) {
+  throw new Error('Unable to apply the JavaScriptPromise protocol compatibility patch');
+}
+if (patchedPromiseProtocol !== promiseAfterActorPatch) {
+  fs.writeFileSync(promiseFile, patchedPromiseProtocol);
+}
 if (patchedManifest !== manifestSource) {
   fs.writeFileSync(packageManifest, patchedManifest);
 }
