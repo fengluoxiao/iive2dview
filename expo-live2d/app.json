@@ -9,7 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.fengluo.live2dmetal",
-      "deploymentTarget": "16.4"
+      "deploymentTarget": "18.0"
     },
     "android": {
       "adaptiveIcon": {
