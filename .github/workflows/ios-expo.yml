@@ -46,6 +46,8 @@ jobs:
           pod install --repo-update
           grep -F "pod 'Live2DNativeMetal'" Podfile
           grep -F "pod 'ExpoLive2DHost'" Podfile
+      - name: Reapply iOS 26 ExpoModulesJSI patch before Xcode build
+        run: node scripts/patch-expo-modules-jsi-ios26.cjs
       - name: Build the generated iPhone application without signing
         run: |
           set -euo pipefail
