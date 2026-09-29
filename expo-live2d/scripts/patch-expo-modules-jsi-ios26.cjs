@@ -81,11 +81,11 @@ for (const [filePath, originalDeclaration, patchedDeclaration] of uncheckedSenda
 
 const packageManifest = path.join(path.dirname(packageRoot), 'Package.swift');
 const manifestSource = fs.readFileSync(packageManifest, 'utf8');
-const restoredSwift6Manifest = manifestSource.replace(
-  'swiftLanguageModes: [.v5],',
+const swift5Manifest = manifestSource.replace(
   'swiftLanguageModes: [.v6],',
+  'swiftLanguageModes: [.v5],',
 );
-const patchedManifest = restoredSwift6Manifest
+const patchedManifest = swift5Manifest
   .replace(
     '        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),\n',
     '',
@@ -93,13 +93,37 @@ const patchedManifest = restoredSwift6Manifest
   .replace(
     '        .enableUpcomingFeature("InferIsolatedConformances"),\n',
     '',
+  )
+  .replace(
+    '          "-enable-library-evolution",\n',
+    '          "-enable-library-evolution",\n          "-enable-bare-slash-regex",\n',
   );
 if (
-  !patchedManifest.includes('swiftLanguageModes: [.v6],') ||
+  !patchedManifest.includes('swiftLanguageModes: [.v5],') ||
+  !patchedManifest.includes('"-enable-bare-slash-regex",') ||
   patchedManifest.includes('.enableUpcomingFeature("NonisolatedNonsendingByDefault")') ||
   patchedManifest.includes('.enableUpcomingFeature("InferIsolatedConformances")')
 ) {
   throw new Error('Unable to apply the Swift 6 concurrency compatibility patch');
+}
+
+const promiseFile = path.join(
+  packageRoot,
+  'ExpoModulesJSI',
+  'Runtime',
+  'Values',
+  'JavaScriptPromise.swift',
+);
+const promiseSource = fs.readFileSync(promiseFile, 'utf8');
+const patchedPromise = promiseSource.replace(
+  '  @JavaScriptActor\n  private final class LongLivedState',
+  '  private final class LongLivedState',
+);
+if (patchedPromise === promiseSource && !promiseSource.includes('  private final class LongLivedState')) {
+  throw new Error('Unable to apply the JavaScriptPromise actor compatibility patch');
+}
+if (patchedPromise !== promiseSource) {
+  fs.writeFileSync(promiseFile, patchedPromise);
 }
 if (patchedManifest !== manifestSource) {
   fs.writeFileSync(packageManifest, patchedManifest);
